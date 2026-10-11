@@ -1,0 +1,82 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "postUpdateOptions": [
+    "gomodTidy"
+  ],
+  "extends": [
+    "config:recommended"
+  ],
+  "minimumReleaseAge": "1 day",
+  "customManagers": [
+    {
+      "customType": "regex",
+      "description": "dprint plugins of the dprint organization in dprint.json",
+      "managerFilePatterns": [
+        "/^dprint\\.json$/"
+      ],
+      "matchStrings": [
+        "https://plugins\\.dprint\\.dev/(?<depName>[a-z]+)-(?<currentValue>\\d+\\.\\d+\\.\\d+)\\.wasm"
+      ],
+      "depNameTemplate": "dprint/dprint-plugin-{{{depName}}}",
+      "datasourceTemplate": "github-releases"
+    },
+    {
+      "customType": "regex",
+      "description": "dprint plugins of g-plane in dprint.json",
+      "managerFilePatterns": [
+        "/^dprint\\.json$/"
+      ],
+      "matchStrings": [
+        "https://plugins\\.dprint\\.dev/g-plane/(?<depName>[a-z_]+)-v(?<currentValue>\\d+\\.\\d+\\.\\d+)\\.wasm"
+      ],
+      "depNameTemplate": "g-plane/{{{depName}}}",
+      "datasourceTemplate": "github-releases",
+      "extractVersionTemplate": "^v(?<version>.+)$"
+    }
+  ],
+  "packageRules": [
+    {
+      "description": "One pull request for all dprint plugins, which the formatting check in CI verifies together",
+      "matchManagers": [
+        "custom.regex"
+      ],
+      "matchFileNames": [
+        "dprint.json"
+      ],
+      "groupName": "dprint plugins"
+    },
+    {
+      "description": "Registries other than Docker Hub do not expose release timestamps, which would make minimumReleaseAge unsatisfiable",
+      "matchDatasources": [
+        "docker"
+      ],
+      "minimumReleaseAgeBehaviour": "timestamp-optional"
+    },
+    {
+      "description": "One pull request per provider across all examples, so that the examples stay on the same versions",
+      "matchManagers": [
+        "terraform"
+      ],
+      "matchDepTypes": [
+        "provider",
+        "required_provider"
+      ],
+      "groupName": "{{depName}} provider"
+    },
+    {
+      "description": "Keep OpenTofu in mise and in the Dockerfile on the same version",
+      "matchPackageNames": [
+        "opentofu",
+        "ghcr.io/opentofu/opentofu",
+        "opentofu/opentofu"
+      ],
+      "groupName": "OpenTofu"
+    },
+    {
+      "matchManagers": [
+        "github-actions"
+      ],
+      "automerge": true
+    }
+  ]
+}

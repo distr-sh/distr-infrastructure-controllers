@@ -1,0 +1,64 @@
+image:
+  repository: ghcr.io/distr-sh/distr-controller-contrib/opentofu-controller
+  # Defaults to the appVersion of the chart.
+  tag: ""
+  pullPolicy: IfNotPresent
+
+module:
+  repository: ghcr.io/distr-sh/distr-controller-contrib/opentofu-controller/modules/azure-static-website
+  # Defaults to the appVersion of the chart.
+  tag: ""
+# Installs the providers from OCI repositories below this prefix instead of registry.opentofu.org, such as
+# registry.example.com/acme/opentofu-providers. REGISTRY_USERNAME and REGISTRY_PASSWORD in secretEnv
+# authenticate at the registries of the module and the providers.
+providerMirror: ""
+
+# Name of this installation, required. Lowercase letters, digits and hyphens, 3 to 40 characters.
+instanceName: ""
+# auto applies every plan, plan only logs the changes for a review.
+applyMode: auto
+reconcileInterval: 15m
+# Set to instanceName to destroy the infrastructure. Uninstall once the logs say so.
+destroyConfirm: ""
+# Encrypts the OpenTofu state and plans, at least 16 characters.
+stateEncryptionPassphrase: ""
+
+# Variables of the OpenTofu configuration, passed as TF_VAR_<name>.
+variables:
+  location: westeurope
+  title: Hello from Distr BYOC
+
+# Additional environment variables, and those that belong into a Secret. The defaults use AKS Workload
+# Identity of the controller's service account.
+env:
+  ARM_SUBSCRIPTION_ID: ""
+  ARM_USE_AKS_WORKLOAD_IDENTITY: "true"
+# secretEnv:
+#   ARM_TENANT_ID: ""
+#   ARM_CLIENT_ID: ""
+#   ARM_CLIENT_SECRET: "{{ .Secrets.ARM_CLIENT_SECRET }}"
+secretEnv: {}
+
+serviceAccount:
+  # annotations:
+  #   azure.workload.identity/client-id: 00000000-0000-0000-0000-000000000000
+  annotations: {}
+# podLabels:
+#   azure.workload.identity/use: "true"
+podLabels: {}
+
+# Additional volumes of the pod, such as the certificate authority of a private registry for SSL_CERT_DIR.
+extraVolumes: []
+extraVolumeMounts: []
+
+# The volume claim holding the state outlives the release.
+persistence:
+  size: 2Gi
+  storageClass: ""
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 256Mi
+  limits:
+    memory: 1Gi

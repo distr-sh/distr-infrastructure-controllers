@@ -1,0 +1,6 @@
+apiVersion: v2
+name: aws-eks
+description: The aws-eks infrastructure application of Distr BYOC, an EKS cluster with a database and a bucket
+type: application
+version: 0.1.0 # x-release-please-version
+appVersion: 0.1.0 # x-release-please-version

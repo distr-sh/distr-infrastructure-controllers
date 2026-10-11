@@ -1,0 +1,13 @@
+{"@level":"info","@message":"OpenTofu 1.13.1","@module":"tofu.ui","type":"version","tofu":"1.13.1","ui":"1.2"}
+{"@level":"info","@message":"random_pet.cluster: Plan to create","type":"planned_change","change":{"resource":{"addr":"random_pet.cluster"},"action":"create"}}
+{"@level":"info","@message":"random_pet.cluster: Creating...","type":"apply_start","hook":{"resource":{"addr":"random_pet.cluster"},"action":"create"}}
+{"@level":"info","@message":"random_pet.cluster: Creation complete after 0s [id=acme-witty-otter]","type":"apply_complete","hook":{"resource":{"addr":"random_pet.cluster"},"action":"create","id_key":"id","id_value":"acme-witty-otter","elapsed_seconds":0}}
+{"@level":"info","@message":"time_sleep.provisioning: Still creating... [10s elapsed]","type":"apply_progress","hook":{"resource":{"addr":"time_sleep.provisioning"},"action":"create","elapsed_seconds":10}}
+{"@level":"info","@message":"time_sleep.provisioning: Still creating... [20s elapsed]","type":"apply_progress","hook":{"resource":{"addr":"time_sleep.provisioning"},"action":"create","elapsed_seconds":20}}
+{"@level":"info","@message":"time_sleep.provisioning: Still creating... [30s elapsed]","type":"apply_progress","hook":{"resource":{"addr":"time_sleep.provisioning"},"action":"create","elapsed_seconds":30}}
+{"@level":"info","@message":"time_sleep.provisioning: Still creating... [40s elapsed]","type":"apply_progress","hook":{"resource":{"addr":"time_sleep.provisioning"},"action":"create","elapsed_seconds":40}}
+{"@level":"error","@message":"time_sleep.provisioning: Creation errored after 41s","type":"apply_errored","hook":{"resource":{"addr":"time_sleep.provisioning"},"action":"create","elapsed_seconds":41}}
+{"@level":"error","@message":"Error: boom","type":"diagnostic","diagnostic":{"severity":"error","summary":"boom","detail":"the provider\n  gave up","address":"time_sleep.provisioning","range":{"filename":"main.tf","start":{"line":8}}}}
+{"@level":"info","@message":"Apply complete! Resources: 1 added, 0 changed, 0 destroyed.","type":"change_summary","changes":{"add":1,"change":0,"import":0,"remove":0,"operation":"apply"}}
+{"@level":"info","@message":"Outputs: 2","type":"outputs","outputs":{"password":{"sensitive":true,"type":"string","value":"hunter2"},"greeting":{"sensitive":false,"type":"string","value":"Hello"}}}
+not json at all

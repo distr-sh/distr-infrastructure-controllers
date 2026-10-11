@@ -1,0 +1,6 @@
+apiVersion: v2
+name: azure-static-website
+description: The azure-static-website infrastructure application of Distr BYOC, a public Azure Storage website
+type: application
+version: 0.1.0 # x-release-please-version
+appVersion: 0.1.0 # x-release-please-version

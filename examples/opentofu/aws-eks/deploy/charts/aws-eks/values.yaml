@@ -1,0 +1,58 @@
+image:
+  repository: ghcr.io/distr-sh/distr-controller-contrib/opentofu-controller
+  # Defaults to the appVersion of the chart.
+  tag: ""
+  pullPolicy: IfNotPresent
+
+module:
+  repository: ghcr.io/distr-sh/distr-controller-contrib/opentofu-controller/modules/aws-eks
+  # Defaults to the appVersion of the chart.
+  tag: ""
+# Installs the providers from OCI repositories below this prefix instead of registry.opentofu.org, such as
+# registry.example.com/acme/opentofu-providers. REGISTRY_USERNAME and REGISTRY_PASSWORD in secretEnv
+# authenticate at the registries of the module and the providers.
+providerMirror: ""
+
+# Name of this installation, required. Lowercase letters, digits and hyphens, 3 to 40 characters.
+instanceName: ""
+# auto applies every plan, plan only logs the changes for a review. Creating a cluster is worth a review.
+applyMode: plan
+reconcileInterval: 15m
+# Set to instanceName to destroy the infrastructure. Uninstall once the logs say so.
+destroyConfirm: ""
+# Encrypts the OpenTofu state and plans, at least 16 characters.
+stateEncryptionPassphrase: ""
+
+# Variables of the OpenTofu configuration, passed as TF_VAR_<name>.
+variables:
+  region: eu-central-1
+
+# Additional environment variables, and those that belong into a Secret. Without credentials here, the
+# controller uses EKS Pod Identity or IRSA of its service account.
+env: {}
+# secretEnv:
+#   AWS_ACCESS_KEY_ID: "{{ .Secrets.AWS_ACCESS_KEY_ID }}"
+#   AWS_SECRET_ACCESS_KEY: "{{ .Secrets.AWS_SECRET_ACCESS_KEY }}"
+secretEnv: {}
+
+serviceAccount:
+  # annotations:
+  #   eks.amazonaws.com/role-arn: arn:aws:iam::123456789012:role/byoc-opentofu-controller
+  annotations: {}
+podLabels: {}
+
+# Additional volumes of the pod, such as the certificate authority of a private registry for SSL_CERT_DIR.
+extraVolumes: []
+extraVolumeMounts: []
+
+# The volume claim holding the state outlives the release.
+persistence:
+  size: 4Gi
+  storageClass: ""
+
+resources:
+  requests:
+    cpu: 200m
+    memory: 512Mi
+  limits:
+    memory: 2Gi
