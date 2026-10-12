@@ -50,6 +50,12 @@ variable "database_deletion_protection" {
   default     = true
 }
 
+variable "bucket_force_destroy" {
+  description = "Delete the objects in the bucket together with it. Set to true before destroying the installation."
+  type        = bool
+  default     = false
+}
+
 variable "application_namespace" {
   description = "Namespace of the application that gets access to the bucket through EKS Pod Identity."
   type        = string

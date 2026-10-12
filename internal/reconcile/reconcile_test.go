@@ -201,10 +201,25 @@ func TestReconcileDestroy(t *testing.T) {
 		"all infrastructure is destroyed, the infrastructure application can be undeployed in Distr"))
 }
 
+func TestReconcileDestroyIgnoresPlanMode(t *testing.T) {
+	g := NewWithT(t)
+	f := newFixture(t, config.Config{ApplyMode: config.ApplyModePlan, DestroyConfirm: "acme-prod"},
+		"FAKE_TOFU_PLAN=changes")
+
+	run := f.reconciler.Reconcile(context.Background())
+	g.Expect(run.Result).To(Equal(status.ResultDestroyed))
+	g.Expect(f.messages()).To(ContainElements(
+		"  # random_pet.cluster will be created",
+		"all infrastructure is destroyed, the infrastructure application can be undeployed in Distr",
+	))
+	g.Expect(f.messages()).NotTo(ContainElement("changes are pending, set APPLY_MODE=auto to apply them"))
+}
+
 type fakeModule struct {
-	digest  string
-	err     error
-	fetches []string
+	digest   string
+	err      error
+	fetchErr error
+	fetches  []string
 }
 
 func (m *fakeModule) Resolve(context.Context) (string, error) {
@@ -216,7 +231,14 @@ func (m *fakeModule) Fetch(_ context.Context, digest, dir string) (string, error
 	if err := os.Mkdir(dir, 0o700); err != nil {
 		return "", err
 	}
-	return dir, os.WriteFile(filepath.Join(dir, "main.tf"), []byte(digest), 0o600)
+	if err := os.WriteFile(filepath.Join(dir, "main.tf"), []byte(digest), 0o600); err != nil {
+		return "", err
+	}
+	return dir, m.fetchErr
+}
+
+func (m *fakeModule) RootDir(dir string) string {
+	return dir
 }
 
 func (m *fakeModule) String() string {
@@ -231,7 +253,7 @@ func TestReconcileDownloadsTheModuleOnlyWhenItChanges(t *testing.T) {
 	run := f.reconciler.Reconcile(context.Background())
 	g.Expect(run.Result).To(Equal(status.ResultSucceeded))
 	g.Expect(run.ModuleDigest).To(Equal("sha256:aaa"))
-	g.Expect(f.runner.Dir).To(Equal(filepath.Join(f.cfg.WorkingDir, "module")))
+	g.Expect(f.runner.Dir).To(Equal(f.store.ModuleDir("sha256:aaa")))
 	g.Expect(filepath.Join(f.runner.Dir, ".terraform", "terraform.tfstate")).To(BeAnExistingFile())
 
 	f.reconciler.Reconcile(context.Background())
@@ -247,6 +269,57 @@ func TestReconcileDownloadsTheModuleOnlyWhenItChanges(t *testing.T) {
 	persisted, err := f.store.ReadPersisted()
 	g.Expect(err).NotTo(HaveOccurred())
 	g.Expect(persisted.LastAppliedModule).To(Equal("sha256:bbb"))
+	g.Expect(f.store.ModuleDir("sha256:aaa")).NotTo(BeADirectory())
+}
+
+func TestReconcileKeepsTheModuleWhenTheDownloadFails(t *testing.T) {
+	g := NewWithT(t)
+	mod := &fakeModule{digest: "sha256:aaa"}
+	f := newFixtureWithModule(t, config.Config{}, mod)
+
+	run := f.reconciler.Reconcile(context.Background())
+	g.Expect(run.Result).To(Equal(status.ResultSucceeded))
+
+	mod.digest, mod.fetchErr = "sha256:bbb", errors.New("connection reset")
+	run = f.reconciler.Reconcile(context.Background())
+	g.Expect(run.Result).To(Equal(status.ResultFailed))
+	g.Expect(run.Error).To(ContainSubstring("could not download the module"))
+	g.Expect(run.ModuleDigest).To(Equal("sha256:aaa"))
+	g.Expect(f.runner.Dir).To(Equal(f.store.ModuleDir("sha256:aaa")))
+	g.Expect(filepath.Join(f.runner.Dir, "main.tf")).To(BeAnExistingFile())
+	g.Expect(f.store.ModuleDir("sha256:bbb") + ".partial").NotTo(BeADirectory())
+
+	mod.err = errors.New("connection refused")
+	run = f.reconciler.Reconcile(context.Background())
+	g.Expect(run.Result).To(Equal(status.ResultSucceeded))
+}
+
+func TestReconcileKeepsTheModuleAcrossRestarts(t *testing.T) {
+	g := NewWithT(t)
+	mod := &fakeModule{digest: "sha256:aaa"}
+	f := newFixtureWithModule(t, config.Config{}, mod)
+
+	run := f.reconciler.Reconcile(context.Background())
+	g.Expect(run.Result).To(Equal(status.ResultSucceeded))
+
+	restarted := func() (*Reconciler, *tofu.Runner) {
+		runner := *f.runner
+		runner.Dir = t.TempDir()
+		return New(f.cfg, &runner, mod, f.store, &status.Tracker{}, f.runner.Logger, runner.Env), &runner
+	}
+
+	mod.err = errors.New("connection refused")
+	reconciler, runner := restarted()
+	run = reconciler.Reconcile(context.Background())
+	g.Expect(run.Result).To(Equal(status.ResultSucceeded))
+	g.Expect(run.ModuleDigest).To(Equal("sha256:aaa"))
+	g.Expect(runner.Dir).To(Equal(f.store.ModuleDir("sha256:aaa")))
+
+	mod.err = nil
+	reconciler, _ = restarted()
+	run = reconciler.Reconcile(context.Background())
+	g.Expect(run.Result).To(Equal(status.ResultSucceeded))
+	g.Expect(mod.fetches).To(HaveLen(1))
 }
 
 func TestReconcileKeepsTheModuleWhenTheRegistryIsUnavailable(t *testing.T) {

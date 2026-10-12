@@ -10,6 +10,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 	"syscall"
@@ -274,7 +275,9 @@ func scanLines(r io.Reader, fn func(string)) {
 	_, _ = io.Copy(io.Discard, r)
 }
 
+// tail keeps the last lines of stdout and stderr, which run reads concurrently.
 type tail struct {
+	mu  sync.Mutex
 	max int
 	buf []string
 }
@@ -287,6 +290,8 @@ func (t *tail) add(line string) {
 	if strings.TrimSpace(line) == "" {
 		return
 	}
+	t.mu.Lock()
+	defer t.mu.Unlock()
 	t.buf = append(t.buf, line)
 	if len(t.buf) > t.max {
 		t.buf = t.buf[len(t.buf)-t.max:]
@@ -294,5 +299,7 @@ func (t *tail) add(line string) {
 }
 
 func (t *tail) lines() []string {
-	return t.buf
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	return slices.Clone(t.buf)
 }

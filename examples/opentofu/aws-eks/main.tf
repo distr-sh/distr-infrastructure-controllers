@@ -112,7 +112,8 @@ resource "random_id" "bucket" {
 }
 
 resource "aws_s3_bucket" "data" {
-  bucket = "${var.instance_name}-data-${random_id.bucket.hex}"
+  bucket        = "${var.instance_name}-data-${random_id.bucket.hex}"
+  force_destroy = var.bucket_force_destroy
 }
 
 resource "aws_s3_bucket_public_access_block" "data" {

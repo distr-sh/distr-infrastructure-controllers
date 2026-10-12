@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"maps"
 	"os"
-	"path/filepath"
 	"slices"
 	"strings"
 	"time"
@@ -25,6 +24,8 @@ type Module interface {
 	Resolve(ctx context.Context) (string, error)
 	// Fetch extracts the package with the digest into dir and returns the directory of the root module.
 	Fetch(ctx context.Context, digest, dir string) (string, error)
+	// RootDir returns the directory of the root module in a package extracted into dir.
+	RootDir(dir string) string
 	String() string
 }
 
@@ -36,7 +37,7 @@ type Reconciler struct {
 	logger  *zap.Logger
 	// module is nil when the configuration is already in the working directory.
 	module Module
-	// moduleDigest identifies the module package in the working directory.
+	// moduleDigest identifies the module package in the data directory that the runs use.
 	moduleDigest string
 	// configHash identifies the input variables, so that a plan with changes can tell a changed
 	// configuration apart from changes someone made to the infrastructure by hand.
@@ -190,17 +191,11 @@ func (r *Reconciler) reconcile(
 	}
 
 	if r.cfg.ApplyMode == config.ApplyModePlan {
-		if lines, err := r.tofu.Show(ctx, planFile); err != nil {
-			r.logger.Warn("could not render the plan", zap.Error(err))
-		} else {
-			for _, line := range lines {
-				if strings.TrimSpace(line) != "" {
-					r.logger.Info(line)
-				}
-			}
+		r.showPlan(ctx, planFile)
+		if !destroy {
+			r.logger.Warn("changes are pending, set APPLY_MODE=auto to apply them")
+			return status.ResultPendingChanges, changes, nil
 		}
-		r.logger.Warn("changes are pending, set APPLY_MODE=auto to apply them")
-		return status.ResultPendingChanges, changes, nil
 	}
 
 	if destroy {
@@ -220,12 +215,30 @@ func (r *Reconciler) reconcile(
 	return status.ResultSucceeded, changes, nil
 }
 
-// prepareModule downloads the module package into the working directory when the source refers to a
-// package other than the one there. When the registry cannot be reached, the runs go on with the package
-// they already have.
+// showPlan logs the plan for a review. With APPLY_MODE=plan a destroy is still applied, since DESTROY_CONFIRM
+// is its confirmation, but the logs show what it removes.
+func (r *Reconciler) showPlan(ctx context.Context, planFile string) {
+	lines, err := r.tofu.Show(ctx, planFile)
+	if err != nil {
+		r.logger.Warn("could not render the plan", zap.Error(err))
+		return
+	}
+	for _, line := range lines {
+		if strings.TrimSpace(line) != "" {
+			r.logger.Info(line)
+		}
+	}
+}
+
+// prepareModule downloads the module package into the data directory when the source refers to a package
+// other than the one there. When the registry cannot be reached, the runs go on with the package they
+// already have, also after a restart.
 func (r *Reconciler) prepareModule(ctx context.Context) error {
 	if r.module == nil {
 		return nil
+	}
+	if r.moduleDigest == "" {
+		r.restoreModule()
 	}
 	digest, err := r.module.Resolve(ctx)
 	if err != nil {
@@ -241,18 +254,51 @@ func (r *Reconciler) prepareModule(ctx context.Context) error {
 	}
 
 	r.logger.Info(fmt.Sprintf("downloading the module %s (%s)", r.module, digest))
-	r.moduleDigest = ""
-	dir := filepath.Join(r.cfg.WorkingDir, "module")
-	if err := os.RemoveAll(dir); err != nil {
-		return fmt.Errorf("could not remove the previous module: %w", err)
+	dir := r.store.ModuleDir(digest)
+	partial := dir + ".partial"
+	if err := os.RemoveAll(partial); err != nil {
+		return fmt.Errorf("could not remove an incomplete download of the module: %w", err)
 	}
-	rootDir, err := r.module.Fetch(ctx, digest, dir)
-	if err != nil {
+	if _, err := r.module.Fetch(ctx, digest, partial); err != nil {
+		_ = os.RemoveAll(partial)
 		return fmt.Errorf("could not download the module %s: %w", r.module, err)
 	}
-	r.tofu.Dir = rootDir
+	if err := os.RemoveAll(dir); err != nil {
+		return fmt.Errorf("could not remove a previous download of the module: %w", err)
+	}
+	if err := os.Rename(partial, dir); err != nil {
+		return fmt.Errorf("could not move the downloaded module into place: %w", err)
+	}
+	r.tofu.Dir = r.module.RootDir(dir)
 	r.moduleDigest = digest
+	if err := r.store.WriteModule(store.Module{Source: r.module.String(), Digest: digest}); err != nil {
+		r.logger.Warn("could not record the downloaded module, after a restart the controller needs the "+
+			"registry to download it again", zap.Error(err))
+	}
+	if err := r.store.RemoveModulesExcept(digest); err != nil {
+		r.logger.Warn("could not remove the previous module", zap.Error(err))
+	}
 	return nil
+}
+
+// restoreModule picks up the module package that the controller downloaded before it was restarted, as long
+// as it belongs to the same source.
+func (r *Reconciler) restoreModule() {
+	m, err := r.store.ReadModule()
+	if err != nil {
+		r.logger.Warn("could not read which module the data directory holds, downloading it again", zap.Error(err))
+		return
+	}
+	if m.Digest == "" || m.Source != r.module.String() {
+		return
+	}
+	rootDir := r.module.RootDir(r.store.ModuleDir(m.Digest))
+	if info, err := os.Stat(rootDir); err != nil || !info.IsDir() {
+		return
+	}
+	r.logger.Debug(fmt.Sprintf("found the module %s (%s) in the data directory", r.module, m.Digest))
+	r.tofu.Dir = rootDir
+	r.moduleDigest = m.Digest
 }
 
 func (r *Reconciler) explainChanges(persisted store.Persisted) {

@@ -100,7 +100,7 @@ To build an infrastructure application of your own, copy an example and change i
 | `APP_VERSION`                            | the tag           | Version of the infrastructure, passed to OpenTofu as `var.app_version`          |
 | `PROVIDER_MIRROR`                        |                   | OCI repository prefix to install the providers of `registry.opentofu.org` from  |
 | `REGISTRY_USERNAME`, `REGISTRY_PASSWORD` |                   | Credentials for the registries of the module and the providers                  |
-| `APPLY_MODE`                             | `auto`            | `auto` applies every plan, `plan` only logs it for a review                     |
+| `APPLY_MODE`                             | `auto`            | `auto` applies every plan, `plan` only logs it for a review, except a destroy   |
 | `RECONCILE_INTERVAL`                     | `15m`             | Time between two runs                                                           |
 | `RETRY_INTERVAL`                         | `2m`              | Time before the next run after a failed run                                     |
 | `STATE_ENCRYPTION_PASSPHRASE`            |                   | Encrypts the state and the plans, at least 16 characters                        |
@@ -116,7 +116,8 @@ certificate authority needs it in `SSL_CERT_DIR`.
 
 The controller compares the version, the digest of the module package and the `TF_VAR_` variables with
 those of the last apply, which tells an upgrade, a changed package, a configuration change and drift apart
-in the logs. When the registry cannot be reached, the runs go on with the package they already have.
+in the logs. The module package is kept in the data directory, so when the registry cannot be reached, the runs
+go on with the package they already have, also after a restart.
 
 The providers are cached in the data directory, so that OpenTofu downloads every provider version only
 once. Versions that the module no longer uses are removed from the cache. The AWS provider alone takes

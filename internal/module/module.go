@@ -182,11 +182,16 @@ func (f *Fetcher) Fetch(ctx context.Context, digest, dir string) (string, error)
 	if err := extract(pkg, dir); err != nil {
 		return "", fmt.Errorf("could not extract the package: %w", err)
 	}
-	rootDir := filepath.Join(dir, filepath.FromSlash(f.source.Subdir))
+	rootDir := f.RootDir(dir)
 	if info, err := os.Stat(rootDir); err != nil || !info.IsDir() {
 		return "", fmt.Errorf("the package has no directory %q", f.source.Subdir)
 	}
 	return rootDir, nil
+}
+
+// RootDir returns the directory of the root module in a package extracted into dir.
+func (f *Fetcher) RootDir(dir string) string {
+	return filepath.Join(dir, filepath.FromSlash(f.source.Subdir))
 }
 
 func packageLayer(data []byte) (ocispec.Descriptor, error) {

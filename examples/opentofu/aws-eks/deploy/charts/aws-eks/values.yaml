@@ -18,7 +18,9 @@ instanceName: ""
 # auto applies every plan, plan only logs the changes for a review. Creating a cluster is worth a review.
 applyMode: plan
 reconcileInterval: 15m
-# Set to instanceName to destroy the infrastructure. Uninstall once the logs say so.
+# Set to instanceName to destroy the infrastructure, also with applyMode plan. Uninstall once the logs say so.
+# Set variables.database_deletion_protection to false and variables.bucket_force_destroy to true and let them
+# apply first.
 destroyConfirm: ""
 # Encrypts the OpenTofu state and plans, at least 16 characters.
 stateEncryptionPassphrase: ""

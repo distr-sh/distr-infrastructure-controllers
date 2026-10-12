@@ -36,6 +36,7 @@ func main() {
 	root.AddCommand(runCommand(), healthcheckCommand(), versionCommand())
 
 	if err := root.Execute(); err != nil {
+		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
 }
@@ -70,9 +71,11 @@ func run(ctx context.Context, cfg *config.Config, logger *zap.Logger) error {
 		"TF_INPUT=0",
 		"CHECKPOINT_DISABLE=1",
 		"TF_VAR_instance_name=" + cfg.InstanceName,
+		"TF_VAR_app_version=" + cfg.AppVersion,
 	}
-	if _, ok := os.LookupEnv("TF_VAR_app_version"); !ok {
-		env = append(env, "TF_VAR_app_version="+cfg.AppVersion)
+	if v, ok := os.LookupEnv("TF_VAR_app_version"); ok && v != cfg.AppVersion {
+		logger.Warn(fmt.Sprintf("TF_VAR_app_version is ignored, the infrastructure gets version %s. "+
+			"Set APP_VERSION to change the version", cfg.AppVersion), zap.String("ignored", v))
 	}
 	if cfg.StateEncryptionPassphrase != "" {
 		encryption, err := tofu.EncryptionConfig(cfg.StateEncryptionPassphrase)
