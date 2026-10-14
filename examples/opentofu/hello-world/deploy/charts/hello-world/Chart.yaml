@@ -1,8 +1,6 @@
 apiVersion: v2
 name: hello-world
-description: >-
-  The hello-world infrastructure application of Distr BYOC, which provisions
-  nothing real
+description: The hello-world infrastructure application of Distr BYOC, which provisions nothing real
 type: application
-version: 0.2.0
-appVersion: 0.2.0
+version: 1.0.0
+appVersion: 1.0.0

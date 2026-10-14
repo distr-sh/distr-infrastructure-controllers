@@ -50,9 +50,9 @@ you release a new image, and Distr rolls it out like any other.
 3. Release a version in Distr whose Compose file or chart runs that image with a volume at `/data`.
 
 The image must contain the lock file, because the controller installs exactly the providers locked in it.
-Build it with `--build-arg VERSION=1.0.0` to set the version of the infrastructure. Without it, the
-infrastructure gets the version of the OpenTofu controller. The controller also remembers a digest of the
-configuration it applied, so a changed configuration under the same version isn't mistaken for drift.
+Replace `<version>` with the version of your infrastructure. Without `APP_VERSION`, the infrastructure gets
+the version of the OpenTofu controller. The controller also remembers a digest of the configuration it
+applied, so a changed configuration under the same version isn't mistaken for drift.
 
 OpenTofu downloads the providers when a run needs them. If an installation can't reach
 `registry.opentofu.org`, push the `linux_amd64` and `linux_arm64` builds of its providers to an OCI registry,
@@ -73,13 +73,13 @@ Every directory in [`examples/opentofu/`](examples/opentofu) is a complete infra
 An example consists of:
 
 - `*.tf` and `.terraform.lock.hcl`: the OpenTofu configuration.
-- `Dockerfile`: the image with the configuration, built on the OpenTofu controller image and released as
-  `ghcr.io/distr-sh/distr-infrastructure-controllers/opentofu-controller/examples/<example>`.
+- `Dockerfile`: the image with the configuration, built on the OpenTofu controller image.
 - `deploy/docker/`: the Compose file and `env.template` of a Docker deployment in Distr.
-- `deploy/charts/<example>/`: the Helm chart of a Kubernetes deployment in Distr, released as
-  `oci://ghcr.io/distr-sh/distr-infrastructure-controllers/opentofu-controller/charts/<example>`.
+- `deploy/charts/<example>/`: the Helm chart of a Kubernetes deployment in Distr.
 
-To build an infrastructure application of your own, copy an example and change its OpenTofu configuration.
+The examples aren't published. To build an infrastructure application of your own, copy an example, change
+its OpenTofu configuration, push its image to your registry and replace `registry.example.com/acme` in the
+Compose file and the chart with it.
 
 ### Configuration
 

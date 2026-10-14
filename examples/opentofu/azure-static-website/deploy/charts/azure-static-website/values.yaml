@@ -1,6 +1,6 @@
-# The OpenTofu controller with the OpenTofu configuration of this example.
+# The image built from the Dockerfile of this example and pushed to your registry.
 image:
-  repository: ghcr.io/distr-sh/distr-infrastructure-controllers/opentofu-controller/examples/azure-static-website
+  repository: registry.example.com/acme/azure-static-website
   # Defaults to the appVersion of the chart.
   tag: ""
   pullPolicy: IfNotPresent
