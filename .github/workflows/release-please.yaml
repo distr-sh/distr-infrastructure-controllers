@@ -11,13 +11,24 @@ jobs:
     timeout-minutes: 1
     runs-on: ubuntu-latest
     permissions:
+      actions: write
       contents: write
       pull-requests: write
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Release Please
+        id: release
         uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # v5.0
         with:
-          token: ${{ secrets.GLASSKUBE_BOT_SECRET }}
           target-branch: ${{ github.ref_name }}
+      # A tag created with the GITHUB_TOKEN starts no workflow, so the release builds are started on it here.
+      - name: Start the release builds
+        if: ${{ steps.release.outputs.release_created == 'true' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ steps.release.outputs.tag_name }}
+        run: |
+          gh workflow run opentofu-controller.yaml --ref "$TAG"
+          gh workflow run opentofu-controller-examples.yaml --ref "$TAG"
