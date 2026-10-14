@@ -88,6 +88,12 @@ resource "aws_vpc_security_group_ingress_rule" "database" {
   to_port                      = 5432
 }
 
+# Snapshot names cannot be reused, so every database gets a final snapshot name of its own. Otherwise
+# destroying a recreated installation would fail on the snapshot left behind by the previous destroy.
+resource "random_id" "final_snapshot" {
+  byte_length = 4
+}
+
 resource "aws_db_instance" "database" {
   identifier     = var.instance_name
   engine         = "postgres"
@@ -108,7 +114,7 @@ resource "aws_db_instance" "database" {
 
   backup_retention_period   = 7
   deletion_protection       = var.database_deletion_protection
-  final_snapshot_identifier = "${var.instance_name}-final"
+  final_snapshot_identifier = "${var.instance_name}-final-${random_id.final_snapshot.hex}"
   apply_immediately         = true
 }
 

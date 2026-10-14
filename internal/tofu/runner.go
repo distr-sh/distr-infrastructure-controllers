@@ -249,21 +249,30 @@ func (r *Runner) run(ctx context.Context, args []string, stdout, stderr func(str
 	}
 
 	var wg sync.WaitGroup
-	wg.Go(func() { scanLines(stdoutPipe, stdout) })
-	wg.Go(func() { scanLines(stderrPipe, stderr) })
+	var stdoutErr, stderrErr error
+	wg.Go(func() { stdoutErr = scanLines(stdoutPipe, stdout) })
+	wg.Go(func() { stderrErr = scanLines(stderrPipe, stderr) })
 	wg.Wait()
 
+	exitCode := 0
 	err = cmd.Wait()
 	if exitErr, ok := errors.AsType[*exec.ExitError](err); ok {
 		if ctx.Err() != nil {
 			return exitErr.ExitCode(), fmt.Errorf("tofu %s was interrupted: %w", args[0], context.Cause(ctx))
 		}
-		return exitErr.ExitCode(), nil
+		exitCode, err = exitErr.ExitCode(), nil
 	}
-	return 0, err
+	if err != nil {
+		return 0, err
+	}
+	// The result of a command whose output was cut off is incomplete, even if it exited successfully.
+	if err := errors.Join(stdoutErr, stderrErr); err != nil {
+		return exitCode, fmt.Errorf("could not read the output of tofu %s: %w", args[0], err)
+	}
+	return exitCode, nil
 }
 
-func scanLines(r io.Reader, fn func(string)) {
+func scanLines(r io.Reader, fn func(string)) error {
 	scanner := bufio.NewScanner(r)
 	scanner.Buffer(make([]byte, 64*1024), maxLineLength)
 	for scanner.Scan() {
@@ -271,8 +280,13 @@ func scanLines(r io.Reader, fn func(string)) {
 			fn(scanner.Text())
 		}
 	}
+	err := scanner.Err()
+	if errors.Is(err, bufio.ErrTooLong) {
+		err = fmt.Errorf("a line is longer than %d MiB", maxLineLength/1024/1024)
+	}
 	// Drain what is left after an overlong line so that tofu never blocks on a full pipe.
 	_, _ = io.Copy(io.Discard, r)
+	return err
 }
 
 // tail keeps the last lines of stdout and stderr, which run reads concurrently.

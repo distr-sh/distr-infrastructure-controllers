@@ -35,6 +35,7 @@ jobs:
 
   controller:
     name: OpenTofu controller image
+    needs: [test]
     runs-on: ubuntu-latest
     timeout-minutes: 30
     permissions:
