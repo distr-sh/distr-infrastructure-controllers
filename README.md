@@ -40,7 +40,7 @@ you release a new image, and Distr rolls it out like any other.
    <!-- x-release-please-start-version -->
 
    ```dockerfile
-   FROM ghcr.io/distr-sh/distr-infrastructure-controllers/opentofu-controller:0.1.0
+   FROM ghcr.io/distr-sh/distr-infrastructure-controllers/opentofu-controller:0.2.0
    ENV APP_VERSION=<version>
    COPY *.tf .terraform.lock.hcl /module/
    ```
