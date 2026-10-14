@@ -23,9 +23,9 @@ in Distr are the only window a vendor has into it.
   `internal/health/`: `/healthz` and `/readyz`.
 - `Dockerfile`: the controller image, without any OpenTofu configuration.
 - `examples/opentofu/<name>/`: one infrastructure application each, with its OpenTofu configuration, a
-  `Dockerfile` that builds `ghcr.io/distr-sh/distr-infrastructure-controllers/opentofu-controller/examples/<name>`
-  FROM the controller image, and `deploy/docker/` and `deploy/charts/<name>/` that run that image. CI
-  discovers new examples itself.
+  `Dockerfile` that builds an image FROM the controller image, and `deploy/docker/` and
+  `deploy/charts/<name>/` that run that image as `registry.example.com/acme/<name>`. Only the controller
+  image is published; CI builds the example images without pushing them and discovers new examples itself.
 - `hack/current-commit.sh`: the commit hash of a build, which mise loads into `COMMIT`.
 
 ## Commands
@@ -55,4 +55,5 @@ mise exec -- tofu -chdir=examples/opentofu/<name> init -upgrade -backend=false #
 - Write the commands of a task into `mise.toml` instead of a script in `hack/`, and do not add scripts that
   are only run by hand.
 - An example needs a `Dockerfile` and `.dockerignore`, `deploy/docker/` with an `env.template`, a chart and
-  an entry in the README table. Add its versioned files to `release-please-config.json`.
+  an entry in the README table. Add its `Dockerfile` to `release-please-config.json`. Do not publish
+  examples.

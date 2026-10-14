@@ -22,13 +22,11 @@ jobs:
         uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # v5.0
         with:
           target-branch: ${{ github.ref_name }}
-      # A tag created with the GITHUB_TOKEN starts no workflow, so the release builds are started on it here.
-      - name: Start the release builds
+      # A tag created with the GITHUB_TOKEN starts no workflow, so the release build is started on it here.
+      - name: Start the release build
         if: ${{ steps.release.outputs.release_created == 'true' }}
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
           TAG: ${{ steps.release.outputs.tag_name }}
-        run: |
-          gh workflow run opentofu-controller.yaml --ref "refs/tags/$TAG"
-          gh workflow run opentofu-controller-examples.yaml --ref "refs/tags/$TAG"
+        run: gh workflow run opentofu-controller.yaml --ref "refs/tags/$TAG"

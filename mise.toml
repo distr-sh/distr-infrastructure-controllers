@@ -95,6 +95,6 @@ run = "docker build --tag {{vars.image}}:$VERSION --build-arg VERSION=$VERSION -
 description = "Build the image of the OpenTofu controller"
 
 [tasks."opentofu:docker-build:example"]
-run = "docker build --tag {{vars.image}}/examples/$EXAMPLE:$VERSION --build-arg CONTROLLER_IMAGE={{vars.image}}:$VERSION --build-arg VERSION=$VERSION examples/opentofu/$EXAMPLE"
+run = "docker build --tag $EXAMPLE:$VERSION --build-arg CONTROLLER_IMAGE={{vars.image}}:$VERSION --build-arg VERSION=$VERSION examples/opentofu/$EXAMPLE"
 depends = ["opentofu:docker-build"]
 description = 'Build the image of an example on top of the image of the OpenTofu controller: "EXAMPLE=aws-eks mise run opentofu:docker-build:example"'

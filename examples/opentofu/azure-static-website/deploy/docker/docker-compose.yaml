@@ -2,7 +2,8 @@ name: azure-static-website
 
 services:
   opentofu-controller:
-    image: ghcr.io/distr-sh/distr-infrastructure-controllers/opentofu-controller/examples/azure-static-website:0.1.0 # x-release-please-version
+    # The image built from the Dockerfile of this example and pushed to your registry.
+    image: registry.example.com/acme/azure-static-website:1.0.0
     restart: unless-stopped
     # Lets an apply in progress finish and save the state when the environment changes, while staying below
     # the 10 minutes the Distr Docker controller waits for "docker compose up".

@@ -73,13 +73,13 @@ Every directory in [`examples/opentofu/`](examples/opentofu) is a complete infra
 An example consists of:
 
 - `*.tf` and `.terraform.lock.hcl`: the OpenTofu configuration.
-- `Dockerfile`: the image with the configuration, built on the OpenTofu controller image and released as
-  `ghcr.io/distr-sh/distr-infrastructure-controllers/opentofu-controller/examples/<example>`.
+- `Dockerfile`: the image with the configuration, built on the OpenTofu controller image.
 - `deploy/docker/`: the Compose file and `env.template` of a Docker deployment in Distr.
-- `deploy/charts/<example>/`: the Helm chart of a Kubernetes deployment in Distr, released as
-  `oci://ghcr.io/distr-sh/distr-infrastructure-controllers/opentofu-controller/charts/<example>`.
+- `deploy/charts/<example>/`: the Helm chart of a Kubernetes deployment in Distr.
 
-To build an infrastructure application of your own, copy an example and change its OpenTofu configuration.
+The examples aren't published. To build an infrastructure application of your own, copy an example, change
+its OpenTofu configuration, push its image to your registry and replace `registry.example.com/acme` in the
+Compose file and the chart with it.
 
 ### Configuration
 
