@@ -1,0 +1,36 @@
+name: hello-world
+
+services:
+  opentofu-controller:
+    image: ghcr.io/distr-sh/distr-infrastructure-controllers/opentofu-controller/examples/hello-world:0.1.0 # x-release-please-version
+    restart: unless-stopped
+    # Lets an apply in progress finish and save the state when the environment changes, while staying below
+    # the 10 minutes the Distr Docker controller waits for "docker compose up".
+    stop_grace_period: 5m
+    # The Distr Docker controller writes the environment of the deployment into this file, which passes
+    # every TF_VAR_ and cloud credential variable on to OpenTofu without listing them here.
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      INSTANCE_NAME: ${INSTANCE_NAME:?error}
+      DATA_DIR: /data
+    volumes:
+      # The state, the OpenTofu configuration and the providers. The Distr Docker controller removes this volume
+      # when the deployment is undeployed: destroy the infrastructure with DESTROY_CONFIRM first, or it is left
+      # without a state.
+      - data:/data
+    healthcheck:
+      test: ["CMD", "/usr/local/bin/opentofu-controller", "healthcheck"]
+      interval: 30s
+      timeout: 10s
+      start_period: 30s
+      retries: 3
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+volumes:
+  data:

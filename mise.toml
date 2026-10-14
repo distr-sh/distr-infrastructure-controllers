@@ -1,0 +1,100 @@
+[settings]
+env_shell_expand = false
+task.output = "prefix"
+
+[tools]
+go = "1.27.1"
+golangci-lint = "2.14.0"
+opentofu = "1.13.1"
+tflint = "0.64.0"
+helm = "4.3.0"
+dprint = "0.61.1"
+
+[env]
+_.source = ["hack/current-commit.sh"]
+VERSION = "{{ get_env(name='VERSION', default='snapshot') }}"
+CGO_ENABLED = "0"
+EXAMPLE = "{{ get_env(name='EXAMPLE', default='hello-world') }}"
+
+[vars]
+ldflags = "-s -w -X github.com/distr-sh/distr-infrastructure-controllers/internal/buildconfig.version=$VERSION -X github.com/distr-sh/distr-infrastructure-controllers/internal/buildconfig.commit=$COMMIT"
+image = "ghcr.io/distr-sh/distr-infrastructure-controllers/opentofu-controller"
+
+[tasks.go-tidy]
+run = "go mod tidy"
+
+[tasks."opentofu:build"]
+run = 'go build -ldflags="{{vars.ldflags}}" -o dist/opentofu-controller ./cmd/controller/opentofu'
+depends = ["go-tidy"]
+description = "Build the OpenTofu controller into dist/"
+
+[tasks."opentofu:run"]
+run = 'go run -ldflags="{{vars.ldflags}}" ./cmd/controller/opentofu run'
+depends = ["go-tidy"]
+description = """
+Run the OpenTofu controller against the configuration of an example in examples/opentofu/, without an image:
+"EXAMPLE=hello-world mise run opentofu:run". The configuration, state, plans, status and providers end up in
+.data/<example>.
+"""
+env = { INSTANCE_NAME = "local-dev", RECONCILE_INTERVAL = "1m", DATA_DIR = ".data/{{env.EXAMPLE}}", MODULE_DIR = "examples/opentofu/{{env.EXAMPLE}}" }
+
+[tasks."lint:go"]
+run = "golangci-lint run"
+depends = ["go-tidy"]
+
+[tasks."opentofu:lint:tofu"]
+run = """
+tofu fmt -check -diff -recursive examples
+for dir in examples/opentofu/*/; do
+  echo "validating $dir"
+  tofu -chdir="$dir" init -backend=false -input=false -lockfile=readonly >/dev/null
+  tofu -chdir="$dir" validate -no-color
+  tflint --chdir="$dir" --config="{{config_root}}/.tflint.hcl" --format=compact
+done
+"""
+description = "Check formatting, validate and tflint every example"
+
+[tasks."opentofu:lint:chart"]
+run = "helm lint --strict --set instanceName=lint-test examples/opentofu/*/deploy/charts/*"
+description = "Lint the chart of every example"
+
+[tasks."lint:dprint"]
+run = "dprint check"
+description = "Check the formatting of the YAML, TOML, Markdown and Dockerfiles"
+
+[tasks."lint:renovate-config"]
+run = "npx --yes --package renovate@latest renovate-config-validator"
+sources = ["renovate.json"]
+
+[tasks.lint]
+run = { tasks = ["lint:go", "lint:dprint", "opentofu:lint:tofu", "opentofu:lint:chart"] }
+
+[tasks."test:go"]
+run = "go test ./..."
+depends = ["go-tidy"]
+description = "Run the Go tests, including the OpenTofu integration test against examples/opentofu/hello-world"
+
+[tasks.test]
+run = { tasks = ["test:go"] }
+
+[tasks."format:go"]
+run = "golangci-lint run --fix"
+
+[tasks."format:dprint"]
+run = "dprint fmt"
+description = "Format the YAML, TOML, Markdown and Dockerfiles"
+
+[tasks."opentofu:format:tofu"]
+run = "tofu fmt -recursive examples"
+
+[tasks.format]
+run = { tasks = ["format:go", "format:dprint", "opentofu:format:tofu"] }
+
+[tasks."opentofu:docker-build"]
+run = "docker build --tag {{vars.image}}:$VERSION --build-arg VERSION=$VERSION --build-arg COMMIT=$COMMIT ."
+description = "Build the image of the OpenTofu controller"
+
+[tasks."opentofu:docker-build:example"]
+run = "docker build --tag {{vars.image}}/examples/$EXAMPLE:$VERSION --build-arg CONTROLLER_IMAGE={{vars.image}}:$VERSION --build-arg VERSION=$VERSION examples/opentofu/$EXAMPLE"
+depends = ["opentofu:docker-build"]
+description = 'Build the image of an example on top of the image of the OpenTofu controller: "EXAMPLE=aws-eks mise run opentofu:docker-build:example"'

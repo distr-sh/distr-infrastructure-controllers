@@ -1,0 +1,5 @@
+The OpenTofu controller of {{ include "byoc.instanceName" . }} is starting. Follow what it provisions with:
+
+  kubectl logs --namespace {{ .Release.Namespace }} --follow statefulset/{{ .Release.Name }}
+
+The state lives in the volume claim data-{{ .Release.Name }}-0, which an uninstall keeps.

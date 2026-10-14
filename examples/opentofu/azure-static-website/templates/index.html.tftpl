@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>${title}</title>
+    <style>
+      body { font-family: system-ui, sans-serif; margin: 4rem auto; max-width: 40rem; padding: 0 1rem; color: #1f2937; }
+      dl { display: grid; grid-template-columns: max-content 1fr; gap: 0.5rem 1.5rem; }
+      dt { font-weight: 600; }
+    </style>
+  </head>
+  <body>
+    <h1>${title}</h1>
+    <p>This website was provisioned by the Distr BYOC infrastructure application.</p>
+    <dl>
+      <dt>Version</dt>
+      <dd>${app_version}</dd>
+      <dt>Instance</dt>
+      <dd>${instance_name}</dd>
+      <dt>Released</dt>
+      <dd>${released_at}</dd>
+    </dl>
+    <p><a href="version.json">version.json</a></p>
+  </body>
+</html>

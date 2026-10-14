@@ -1,0 +1,8 @@
+# Only the OpenTofu configuration goes into the image, not the files of a local "tofu init" or the deployment.
+.terraform
+*.tfstate
+*.tfstate.*
+*.tfplan
+deploy
+Dockerfile
+.dockerignore

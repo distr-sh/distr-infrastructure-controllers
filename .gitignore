@@ -1,0 +1,13 @@
+/dist/
+/.data/
+.idea/
+.DS_Store
+
+# OpenTofu working directories and local state of examples run outside the controller
+.terraform/
+*.tfstate
+*.tfstate.*
+*.tfplan
+crash.log
+
+*.tgz

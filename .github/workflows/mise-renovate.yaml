@@ -1,0 +1,32 @@
+# yaml-language-server: $schema=https://json.schemastore.org/github-workflow.json
+
+name: Check mise & renovate config
+
+on:
+  push:
+    branches:
+      - "main"
+    paths:
+      - "mise.toml"
+      - ".github/workflows/mise-renovate.yaml"
+      - renovate.json
+  pull_request:
+    paths:
+      - "mise.toml"
+      - ".github/workflows/mise-renovate.yaml"
+      - renovate.json
+
+jobs:
+  install:
+    name: Install
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Install mise
+        uses: jdx/mise-action@2d8d4cafcbd33be2ea37d2b6f5ad595363d1f1ca # v5.1.1
+      - name: Validate renovate.json
+        run: mise run lint:renovate-config
