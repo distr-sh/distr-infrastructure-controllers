@@ -1,7 +1,7 @@
 # syntax=docker/dockerfile:1
 
 # x-release-please-start-version
-ARG CONTROLLER_IMAGE=ghcr.io/distr-sh/distr-infrastructure-controllers/opentofu-controller:0.1.0
+ARG CONTROLLER_IMAGE=ghcr.io/distr-sh/distr-infrastructure-controllers/opentofu-controller:0.2.0
 # x-release-please-end
 
 # The OpenTofu controller with the OpenTofu configuration of this example, which it copies into the data volume
