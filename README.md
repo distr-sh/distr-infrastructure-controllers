@@ -1,4 +1,4 @@
-# distr-infrastructure-controllers
+# Distr infrastructure controllers
 
 Infrastructure controllers for Distr: they provision and manage the infrastructure an application runs on.
 Distr deploys each of them like any other application, with the Docker controller on a VM or with the
@@ -45,8 +45,8 @@ infrastructure is a new image, which Distr rolls out like any other.
 
 ### How a vendor ships infrastructure
 
-1. Write an OpenTofu configuration with an empty `backend "local" {}` and a dependency lock file that
-   covers `linux_amd64` and `linux_arm64` (`mise run opentofu:lock:tofu`).
+1. Write an OpenTofu configuration with an empty `backend "local" {}` and the dependency lock file that
+   `tofu init` writes.
 2. Build an image FROM the OpenTofu controller image that copies the configuration to `/module`, and push
    it to a registry such as the Distr registry or GHCR:
 
@@ -66,11 +66,10 @@ remembers a digest of the configuration it applied, which tells a new configurat
 apart from drift.
 
 OpenTofu downloads the providers when a run needs them. For installations without access to
-`registry.opentofu.org`, push the providers to a registry and set `PROVIDER_MIRROR`:
-
-```sh
-hack/push-providers.sh path/to/config registry.example.com/acme/opentofu-providers
-```
+`registry.opentofu.org`, push the providers for `linux_amd64` and `linux_arm64` to an OCI registry as
+described in [Provider Mirrors in OCI Registries](https://opentofu.org/docs/cli/oci_registries/provider-mirror/),
+one repository per provider such as `registry.example.com/acme/opentofu-providers/hashicorp/aws`, and set
+`PROVIDER_MIRROR=registry.example.com/acme/opentofu-providers`.
 
 ### Examples
 
@@ -135,8 +134,9 @@ makes a failed run visible as an unhealthy deployment in Distr.
 
 ## Development
 
-All tools are installed with [mise](https://mise.jdx.dev). The OpenTofu controller and its examples are
-built, tested and released by the `opentofu-controller` and `opentofu-controller-examples` workflows.
+All tools are installed with [mise](https://mise.jdx.dev). CI runs `mise run lint` in the `lint` workflow,
+and the OpenTofu controller and its examples are tested, built and released by the `opentofu-controller` and
+`opentofu-controller-examples` workflows.
 
 ```sh
 mise run opentofu:build
@@ -144,6 +144,5 @@ mise run opentofu:run
 mise run test
 mise run lint
 mise run format
-mise run opentofu:lock:tofu
 mise run opentofu:docker-build:example
 ```

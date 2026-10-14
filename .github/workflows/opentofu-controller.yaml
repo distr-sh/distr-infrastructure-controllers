@@ -19,8 +19,8 @@ env:
   IMAGE: ghcr.io/${{ github.repository }}/opentofu-controller
 
 jobs:
-  lint:
-    name: Lint and test
+  test:
+    name: Test
     runs-on: ubuntu-latest
     timeout-minutes: 20
     permissions:
@@ -30,10 +30,8 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Install mise
         uses: jdx/mise-action@2d8d4cafcbd33be2ea37d2b6f5ad595363d1f1ca # v5.1.1
-      - name: Lint Go
-        run: mise run lint:go
-      - name: Test Go
-        run: mise run test:go
+      - name: Test
+        run: mise run test
 
   controller:
     name: OpenTofu controller image

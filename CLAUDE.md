@@ -26,7 +26,7 @@ in Distr are the only window a vendor has into it.
   `Dockerfile` that builds `ghcr.io/distr-sh/distr-infrastructure-controllers/opentofu-controller/examples/<name>`
   FROM the controller image, and `deploy/docker/` and `deploy/charts/<name>/` that run that image. CI
   discovers new examples itself.
-- `hack/push-providers.sh`: mirrors the providers of a configuration to an OCI registry.
+- `hack/current-commit.sh`: the commit hash of a build, which mise loads into `COMMIT`.
 
 ## Commands
 
@@ -37,20 +37,22 @@ mise run opentofu:build
 mise run test
 mise run lint
 mise run format
-mise run opentofu:lock:tofu   # after changing a provider version
+mise exec -- tofu -chdir=examples/opentofu/<name> init -upgrade -backend=false # after changing a provider version
 ```
 
 ## Rules
 
 - Log with zap in sentences a vendor understands without knowing OpenTofu: what is happening and why.
   Warnings and errors go to stderr, everything else to stdout.
-- The configuration in an image must contain its `.terraform.lock.hcl`, which must cover linux_amd64 and
-  linux_arm64. The controller runs `tofu init -lockfile=readonly`.
+- The configuration in an image must contain its `.terraform.lock.hcl`, since the controller runs
+  `tofu init -lockfile=readonly`.
 - The image is the only source of the configuration: the controller replaces the copy in the data volume on
   every start. OpenTofu downloads the providers at runtime into the plugin cache in the data volume.
 - The state, the configuration and the providers live in a named volume on Docker, which an undeploy in
   Distr removes, and in a retained volume claim on Kubernetes. Host directories cannot be mounted on Docker.
 - Destroying needs `DESTROY_CONFIRM` set to the instance name. Do not add another path that destroys.
 - Pin provider and module versions exactly, and keep the examples on the same provider versions.
+- Write the commands of a task into `mise.toml` instead of a script in `hack/`, and do not add scripts that
+  are only run by hand.
 - An example needs a `Dockerfile` and `.dockerignore`, `deploy/docker/` with an `env.template`, a chart and
   an entry in the README table. Add its versioned files to `release-please-config.json`.

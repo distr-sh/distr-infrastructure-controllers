@@ -19,22 +19,6 @@ env:
   IMAGE: ghcr.io/${{ github.repository }}/opentofu-controller
 
 jobs:
-  lint:
-    name: Lint
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
-    permissions:
-      contents: read
-    steps:
-      - name: Checkout
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - name: Install mise
-        uses: jdx/mise-action@2d8d4cafcbd33be2ea37d2b6f5ad595363d1f1ca # v5.1.1
-      - name: Lint OpenTofu
-        run: mise run opentofu:lint:tofu
-      - name: Lint charts
-        run: mise run opentofu:lint:chart
-
   examples:
     name: Discover examples
     runs-on: ubuntu-latest
@@ -55,7 +39,7 @@ jobs:
   # controller image built here.
   image:
     name: Image ${{ matrix.example }}
-    needs: [examples, lint, controller-image]
+    needs: [examples, controller-image]
     # Without a tag controller-image is skipped, which must not skip this job.
     if: ${{ !cancelled() && !failure() }}
     runs-on: ubuntu-latest
@@ -121,7 +105,7 @@ jobs:
 
   chart:
     name: Chart ${{ matrix.example }}
-    needs: [examples, lint]
+    needs: [examples]
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
