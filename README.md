@@ -1,34 +1,21 @@
 # Distr infrastructure controllers
 
-Infrastructure controllers for Distr: they provision and manage the infrastructure an application runs on.
-Distr deploys each of them like any other application, with the Docker controller on a VM or with the
-Kubernetes controller in a cluster, and rolls out new versions of what they manage the same way it rolls out
-new versions of an application.
+The controllers in this repository are deployed like any other Distr application and manage infrastructure.
 
 | Controller                                  | Manages                                                   | Image                                                                   |
 | ------------------------------------------- | --------------------------------------------------------- | ----------------------------------------------------------------------- |
 | [OpenTofu controller](#opentofu-controller) | The infrastructure of a Bring Your Own Cloud installation | `ghcr.io/distr-sh/distr-infrastructure-controllers/opentofu-controller` |
 
-Every controller follows the same rules:
-
-- Everything it does is visible in its logs, in sentences a vendor understands, because the deployment
-  logs in Distr are the only window a vendor has into it.
-- Its state lives in a volume: a named volume on Docker, a retained volume claim on Kubernetes.
-- It deletes nothing it manages without an explicit confirmation.
-- It reports its health on `/healthz` and `/readyz`, which makes a failure visible as an unhealthy
-  deployment in Distr.
-
 ## OpenTofu controller
 
-The OpenTofu controller provisions the infrastructure of a Bring Your Own Cloud installation with
-OpenTofu. Distr deploys it with the Docker controller on a management VM or with the Kubernetes
-controller in a management cluster.
+The OpenTofu controller provisions the infrastructure of a Bring Your Own Cloud installation with OpenTofu.
+The infrastructure is just a Terraform configuration baked into the controller image, and its state lives
+in a persistent volume.
 
-The infrastructure itself is an OpenTofu configuration that ships in an image built FROM the OpenTofu
-controller image. On every start the controller copies the configuration into its data volume, next to the
-state. Every `RECONCILE_INTERVAL` it plans and applies the configuration and logs every step, so the
-deployment logs in Distr tell what is being created, changed or destroyed, and why. A new version of the
-infrastructure is a new image, which Distr rolls out like any other.
+When it starts, the controller copies the configuration into its data volume, next to the state. Then it
+plans and applies the configuration every `RECONCILE_INTERVAL` and logs each step, so the deployment logs in
+Distr show what is being created, changed or destroyed, and why. To ship a new version of the infrastructure,
+you release a new image, and Distr rolls it out like any other.
 
 ```text
 2026-10-08T06:58:58.838Z INFO run #1 started {"operation": "apply", "mode": "auto", "version": "0.2.0"}
@@ -43,33 +30,31 @@ infrastructure is a new image, which Distr rolls out like any other.
 2026-10-08T06:59:02.540Z INFO run #1 finished in 3.7s: the infrastructure is up to date
 ```
 
-### How a vendor ships infrastructure
+### How to deploy infrastructure into a customer's cloud account
 
-1. Write an OpenTofu configuration with an empty `backend "local" {}` and the dependency lock file that
-   `tofu init` writes.
-2. Build an image FROM the OpenTofu controller image that copies the configuration to `/module`, and push
-   it to a registry such as the Distr registry or GHCR:
+1. Write an OpenTofu configuration with an empty `backend "local" {}` block, and keep the
+   `.terraform.lock.hcl` that `tofu init` writes.
+2. Build an image on top of the OpenTofu controller image that copies the configuration to `/module`, and
+   push it to a registry such as the Distr registry or GHCR:
 
    ```dockerfile
-   # x-release-please-start-version
    FROM ghcr.io/distr-sh/distr-infrastructure-controllers/opentofu-controller:0.1.0
-   # x-release-please-end
    ENV APP_VERSION=1.0.0
    COPY *.tf .terraform.lock.hcl /module/
    ```
 
 3. Release a version in Distr whose Compose file or chart runs that image with a volume at `/data`.
 
-The image has to contain the lock file, since the controller installs exactly the locked providers. Without
-`APP_VERSION`, the version of the OpenTofu controller is the version of the infrastructure. The controller
-remembers a digest of the configuration it applied, which tells a new configuration of the same version
-apart from drift.
+The image must contain the lock file, because the controller installs exactly the providers locked in it.
+If you don't set `APP_VERSION`, the infrastructure gets the version of the OpenTofu controller. The
+controller also remembers a digest of the configuration it applied, so a changed configuration under the
+same version isn't mistaken for drift.
 
-OpenTofu downloads the providers when a run needs them. For installations without access to
-`registry.opentofu.org`, push the providers for `linux_amd64` and `linux_arm64` to an OCI registry as
-described in [Provider Mirrors in OCI Registries](https://opentofu.org/docs/cli/oci_registries/provider-mirror/),
-one repository per provider such as `registry.example.com/acme/opentofu-providers/hashicorp/aws`, and set
-`PROVIDER_MIRROR=registry.example.com/acme/opentofu-providers`.
+OpenTofu downloads the providers when a run needs them. If an installation can't reach
+`registry.opentofu.org`, push the `linux_amd64` and `linux_arm64` builds of its providers to an OCI registry,
+as described in [Provider Mirrors in OCI Registries](https://opentofu.org/docs/cli/oci_registries/provider-mirror/).
+Each provider gets its own repository, such as `registry.example.com/acme/opentofu-providers/hashicorp/aws`.
+Then set `PROVIDER_MIRROR=registry.example.com/acme/opentofu-providers`.
 
 ### Examples
 
@@ -84,7 +69,7 @@ Every directory in [`examples/opentofu/`](examples/opentofu) is a complete infra
 An example consists of:
 
 - `*.tf` and `.terraform.lock.hcl`: the OpenTofu configuration.
-- `Dockerfile`: the image with the configuration, built FROM the OpenTofu controller image and released as
+- `Dockerfile`: the image with the configuration, built on the OpenTofu controller image and released as
   `ghcr.io/distr-sh/distr-infrastructure-controllers/opentofu-controller/examples/<example>`.
 - `deploy/docker/`: the Compose file and `env.template` of a Docker deployment in Distr.
 - `deploy/charts/<example>/`: the Helm chart of a Kubernetes deployment in Distr, released as
@@ -94,55 +79,34 @@ To build an infrastructure application of your own, copy an example and change i
 
 ### Configuration
 
-| Variable                                 | Default                | Description                                                                    |
-| ---------------------------------------- | ---------------------- | ------------------------------------------------------------------------------ |
-| `INSTANCE_NAME`                          | required               | Name of the installation, passed to OpenTofu as `var.instance_name`            |
-| `MODULE_DIR`                             | `/module`              | Directory of the OpenTofu configuration in the image                           |
-| `APP_VERSION`                            | the controller version | Version of the infrastructure, passed to OpenTofu as `var.app_version`         |
-| `PROVIDER_MIRROR`                        |                        | OCI repository prefix to install the providers of `registry.opentofu.org` from |
-| `REGISTRY_USERNAME`, `REGISTRY_PASSWORD` |                        | Credentials for the registry of `PROVIDER_MIRROR`                              |
-| `APPLY_MODE`                             | `auto`                 | `auto` applies every plan, `plan` only logs it for a review, except a destroy  |
-| `RECONCILE_INTERVAL`                     | `15m`                  | Time between two runs                                                          |
-| `RETRY_INTERVAL`                         | `2m`                   | Time before the next run after a failed run                                    |
-| `STATE_ENCRYPTION_PASSPHRASE`            |                        | Encrypts the state and the plans, at least 16 characters                       |
-| `DESTROY_CONFIRM`                        |                        | Set to `INSTANCE_NAME` to destroy all infrastructure                           |
-| `HEALTH_ADDR`                            | `:8686`                | Address of `/healthz` and `/readyz`, off the ports Distr uses                  |
-| `LOG_LEVEL`, `LOG_FORMAT`                | `info`, `console`      | `debug`, `info`, `warn`, `error`; `console` or `json`                          |
-| `TF_VAR_<name>`                          |                        | Variables of the OpenTofu configuration                                        |
+| Variable                                 | Default                | Description                                                                                  |
+| ---------------------------------------- | ---------------------- | -------------------------------------------------------------------------------------------- |
+| `INSTANCE_NAME`                          | required               | Name of the installation, passed to OpenTofu as `var.instance_name`                          |
+| `MODULE_DIR`                             | `/module`              | Directory of the OpenTofu configuration in the image                                         |
+| `APP_VERSION`                            | the controller version | Version of the infrastructure, passed to OpenTofu as `var.app_version`                       |
+| `PROVIDER_MIRROR`                        |                        | OCI repository prefix to install the providers of `registry.opentofu.org` from               |
+| `REGISTRY_USERNAME`, `REGISTRY_PASSWORD` |                        | Credentials for the registry of `PROVIDER_MIRROR`                                            |
+| `APPLY_MODE`                             | `auto`                 | `auto` applies every plan, `plan` only logs it for review but still runs a confirmed destroy |
+| `RECONCILE_INTERVAL`                     | `15m`                  | Time between two runs                                                                        |
+| `RETRY_INTERVAL`                         | `2m`                   | Time before the next run after a failed run                                                  |
+| `STATE_ENCRYPTION_PASSPHRASE`            |                        | Encrypts the state and the plans, at least 16 characters                                     |
+| `DESTROY_CONFIRM`                        |                        | Set to `INSTANCE_NAME` to destroy all infrastructure                                         |
+| `HEALTH_ADDR`                            | `:8686`                | Address of `/healthz` and `/readyz`, by default on a port Distr doesn't use                  |
+| `LOG_LEVEL`, `LOG_FORMAT`                | `info`, `console`      | `debug`, `info`, `warn`, `error`; `console` or `json`                                        |
+| `TF_VAR_<name>`                          |                        | Variables of the OpenTofu configuration                                                      |
 
-`mise run opentofu:run` runs an example locally without an image, with `MODULE_DIR` pointing at it. Without
-the registry credentials, OpenTofu uses those of a Docker configuration file, such as `~/.docker/config.json`.
-A registry with a private certificate authority needs it in `SSL_CERT_DIR`.
+To try an example locally without building an image, run `mise run opentofu:run`, which points `MODULE_DIR`
+at the example. Without `REGISTRY_USERNAME` and `REGISTRY_PASSWORD`, OpenTofu uses the credentials from a
+Docker configuration file such as `~/.docker/config.json`. For a registry whose certificate comes from a
+private certificate authority, put the CA certificate into `SSL_CERT_DIR`.
 
-The controller compares the version, the digest of the OpenTofu configuration and the `TF_VAR_` variables
-with those of the last apply, which tells an upgrade, a changed configuration, changed variables and drift
-apart in the logs.
+On every run, the controller compares the version, the configuration digest and the `TF_VAR_` variables with
+those of the last apply. The logs then say whether a change comes from an upgrade, a new configuration,
+changed variables or drift.
 
-The providers are cached in the data volume, so that OpenTofu downloads every provider version only once,
-also across restarts. Versions that the configuration no longer uses are removed from the cache. The AWS
-provider alone takes about 800 MB.
+OpenTofu caches the providers in the data volume, so it downloads each provider version only once, even
+across restarts. The controller removes versions the configuration no longer uses. The AWS provider alone
+takes about 800 MB, so size the volume accordingly.
 
-`/healthz` reports whether the controller is alive and `/readyz` whether its last run succeeded, which
-makes a failed run visible as an unhealthy deployment in Distr.
-
-### Deployment
-
-- Docker: the state, the configuration and the providers live in the named volume `data` of the deployment,
-  which the Distr Docker controller removes when the application is undeployed. Destroy the infrastructure with `DESTROY_CONFIRM` before undeploying it,
-  or it is left without a state.
-- Kubernetes: a StatefulSet whose volume claim outlives the release.
-
-## Development
-
-All tools are installed with [mise](https://mise.jdx.dev). CI runs `mise run lint` in the `lint` workflow,
-and the OpenTofu controller and its examples are tested, built and released by the `opentofu-controller` and
-`opentofu-controller-examples` workflows.
-
-```sh
-mise run opentofu:build
-mise run opentofu:run
-mise run test
-mise run lint
-mise run format
-mise run opentofu:docker-build:example
-```
+`/healthz` reports whether the controller is alive, and `/readyz` whether its last run succeeded. So a failed
+run shows up in Distr as an unhealthy deployment.
