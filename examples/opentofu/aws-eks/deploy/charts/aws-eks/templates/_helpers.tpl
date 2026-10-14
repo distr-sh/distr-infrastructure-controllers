@@ -18,6 +18,9 @@ The instance name, validated like the OpenTofu controller does.
 {{- if not (regexMatch "^[a-z0-9]([a-z0-9-]{1,38}[a-z0-9])$" $name) }}
 {{- fail "instanceName must be 3 to 40 lowercase letters, digits and hyphens, starting and ending with a letter or digit" }}
 {{- end }}
+{{- if or (not (regexMatch "^[a-z]" $name)) (contains "--" $name) }}
+{{- fail "instanceName must start with a letter and must not contain two hyphens in a row, because Amazon RDS names the database after it" }}
+{{- end }}
 {{- $name }}
 {{- end }}
 

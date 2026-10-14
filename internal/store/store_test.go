@@ -3,7 +3,7 @@ package store
 import (
 	"testing"
 
-	"github.com/distr-sh/distr-controller-contrib/internal/status"
+	"github.com/distr-sh/distr-infrastructure-controllers/internal/status"
 	. "github.com/onsi/gomega"
 )
 

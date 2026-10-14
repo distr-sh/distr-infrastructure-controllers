@@ -23,36 +23,29 @@ func TestFromEnvDefaults(t *testing.T) {
 	g.Expect(cfg.ApplyMode).To(Equal(ApplyModeAuto))
 	g.Expect(cfg.ReconcileInterval).To(Equal(15 * time.Minute))
 	g.Expect(cfg.RetryInterval).To(Equal(2 * time.Minute))
-	g.Expect(cfg.WorkingDir).To(Equal("/workspace"))
+	g.Expect(cfg.ModuleDir).To(Equal("/module"))
 	g.Expect(cfg.DataDir).To(Equal("/data"))
 	g.Expect(cfg.LogLevel).To(Equal(zapcore.InfoLevel))
 	g.Expect(cfg.DestroyRequested()).To(BeFalse())
-	g.Expect(cfg.Module).To(BeNil())
 	g.Expect(cfg.AppVersion).To(Equal("snapshot"))
 }
 
-func TestFromEnvModule(t *testing.T) {
+func TestFromEnvVersionAndProviderMirror(t *testing.T) {
 	g := NewWithT(t)
 	env := map[string]string{
 		"INSTANCE_NAME":   "acme-prod",
-		"MODULE_SOURCE":   "oci://ghcr.io/acme/modules/app?tag=1.2.0",
+		"APP_VERSION":     "1.2.0",
+		"MODULE_DIR":      "/opt/acme/module",
 		"PROVIDER_MIRROR": "ghcr.io/acme/providers/",
 	}
 	cfg, err := FromEnv(lookup(env))
 	g.Expect(err).NotTo(HaveOccurred())
-	g.Expect(cfg.Module.Repository).To(Equal("ghcr.io/acme/modules/app"))
 	g.Expect(cfg.AppVersion).To(Equal("1.2.0"))
+	g.Expect(cfg.ModuleDir).To(Equal("/opt/acme/module"))
 	g.Expect(cfg.ProviderMirror).To(Equal("ghcr.io/acme/providers"))
 
-	env["APP_VERSION"] = "1.2.0-rc.1"
-	cfg, err = FromEnv(lookup(env))
-	g.Expect(err).NotTo(HaveOccurred())
-	g.Expect(cfg.AppVersion).To(Equal("1.2.0-rc.1"))
-
-	env["MODULE_SOURCE"] = "ghcr.io/acme/modules/app:1.2.0"
 	env["REGISTRY_USERNAME"] = "acme"
 	_, err = FromEnv(lookup(env))
-	g.Expect(err).To(MatchError(ContainSubstring("MODULE_SOURCE")))
 	g.Expect(err).To(MatchError(ContainSubstring("REGISTRY_USERNAME and REGISTRY_PASSWORD")))
 }
 

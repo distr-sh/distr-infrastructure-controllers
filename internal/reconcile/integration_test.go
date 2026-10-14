@@ -5,14 +5,14 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"strings"
 	"testing"
 	"time"
 
-	"github.com/distr-sh/distr-controller-contrib/internal/config"
-	"github.com/distr-sh/distr-controller-contrib/internal/status"
-	"github.com/distr-sh/distr-controller-contrib/internal/store"
-	"github.com/distr-sh/distr-controller-contrib/internal/tofu"
+	"github.com/distr-sh/distr-infrastructure-controllers/internal/config"
+	"github.com/distr-sh/distr-infrastructure-controllers/internal/module"
+	"github.com/distr-sh/distr-infrastructure-controllers/internal/status"
+	"github.com/distr-sh/distr-infrastructure-controllers/internal/store"
+	"github.com/distr-sh/distr-infrastructure-controllers/internal/tofu"
 	. "github.com/onsi/gomega"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
@@ -31,7 +31,6 @@ func TestHelloWorld(t *testing.T) {
 	}
 	g := NewWithT(t)
 
-	workingDir := copyExample(t, "hello-world")
 	encryption, err := tofu.EncryptionConfig("a passphrase with ${braces} in it")
 	g.Expect(err).NotTo(HaveOccurred())
 
@@ -39,12 +38,15 @@ func TestHelloWorld(t *testing.T) {
 	logger := zap.New(core)
 	dataStore, err := store.Open(t.TempDir())
 	g.Expect(err).NotTo(HaveOccurred())
+	moduleDigest, err := module.Install(filepath.Join("..", "..", "examples", "opentofu", "hello-world"),
+		dataStore.ModuleDir())
+	g.Expect(err).NotTo(HaveOccurred())
 
 	cfg := &config.Config{InstanceName: "it-hello", AppVersion: "1.0.0", ApplyMode: config.ApplyModeAuto}
 	newReconciler := func() *Reconciler {
 		runner := &tofu.Runner{
 			Binary:         binary,
-			Dir:            workingDir,
+			Dir:            dataStore.ModuleDir(),
 			PluginCacheDir: dataStore.PluginCacheDir(),
 			Env: []string{
 				"TF_IN_AUTOMATION=1",
@@ -56,7 +58,7 @@ func TestHelloWorld(t *testing.T) {
 			Logger:           logger,
 			ProgressInterval: 30 * time.Second,
 		}
-		return New(cfg, runner, nil, dataStore, &status.Tracker{}, logger, runner.Env)
+		return New(cfg, runner, moduleDigest, dataStore, &status.Tracker{}, logger, runner.Env)
 	}
 	ctx := t.Context()
 
@@ -97,29 +99,4 @@ func TestHelloWorld(t *testing.T) {
 	run = newReconciler().Reconcile(context.WithoutCancel(ctx))
 	g.Expect(run.Result).To(Equal(status.ResultDestroyed))
 	g.Expect(run.Changes).To(BeNil())
-}
-
-// copyExample copies an example into a temporary directory, so that the test does not leave a .terraform
-// directory in the repository.
-func copyExample(t *testing.T, name string) string {
-	t.Helper()
-	src := filepath.Join("..", "..", "examples", "opentofu", name)
-	dst := t.TempDir()
-	entries, err := os.ReadDir(src)
-	if err != nil {
-		t.Fatal(err)
-	}
-	for _, e := range entries {
-		if e.IsDir() || !strings.HasSuffix(e.Name(), ".tf") && e.Name() != ".terraform.lock.hcl" {
-			continue
-		}
-		data, err := os.ReadFile(filepath.Join(src, e.Name()))
-		if err != nil {
-			t.Fatal(err)
-		}
-		if err := os.WriteFile(filepath.Join(dst, e.Name()), data, 0o600); err != nil {
-			t.Fatal(err)
-		}
-	}
-	return dst
 }

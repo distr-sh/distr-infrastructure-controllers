@@ -7,8 +7,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/distr-sh/distr-controller-contrib/internal/buildconfig"
-	"github.com/distr-sh/distr-controller-contrib/internal/module"
+	"github.com/distr-sh/distr-infrastructure-controllers/internal/buildconfig"
 	"go.uber.org/zap/zapcore"
 )
 
@@ -36,10 +35,9 @@ type Config struct {
 	// var.instance_name and has to be repeated in DestroyConfirm to destroy the infrastructure.
 	InstanceName string
 	AppVersion   string
-	// Module is the OpenTofu configuration in an OCI registry. Without it, the configuration has to be in
-	// WorkingDir already.
-	Module     *module.Source
-	WorkingDir string
+	// ModuleDir holds the OpenTofu configuration, which the image of the infrastructure application copies there.
+	// The controller copies it into DataDir before it runs OpenTofu.
+	ModuleDir string
 	// ProviderMirror is an OCI repository prefix to install the providers of registry.opentofu.org from,
 	// such as registry.example.com/acme/opentofu-providers.
 	ProviderMirror            string
@@ -71,7 +69,7 @@ func FromEnv(lookup func(string) (string, bool)) (*Config, error) {
 	cfg := Config{
 		InstanceName:              p.required("INSTANCE_NAME"),
 		AppVersion:                p.string("APP_VERSION", ""),
-		WorkingDir:                p.string("WORKING_DIR", "/workspace"),
+		ModuleDir:                 p.string("MODULE_DIR", "/module"),
 		ProviderMirror:            strings.TrimSuffix(p.string("PROVIDER_MIRROR", ""), "/"),
 		RegistryUsername:          p.string("REGISTRY_USERNAME", ""),
 		RegistryPassword:          p.string("REGISTRY_PASSWORD", ""),
@@ -101,22 +99,11 @@ func FromEnv(lookup func(string) (string, bool)) (*Config, error) {
 	if cfg.StateEncryptionPassphrase != "" && len(cfg.StateEncryptionPassphrase) < minPassphraseLength {
 		p.fail(fmt.Sprintf("STATE_ENCRYPTION_PASSPHRASE must be at least %d characters long", minPassphraseLength))
 	}
-	if source := p.string("MODULE_SOURCE", ""); source != "" {
-		if m, err := module.Parse(source); err != nil {
-			p.fail("MODULE_SOURCE " + err.Error())
-		} else {
-			cfg.Module = &m
-		}
-	}
 	if (cfg.RegistryUsername == "") != (cfg.RegistryPassword == "") {
 		p.fail("REGISTRY_USERNAME and REGISTRY_PASSWORD must be set together")
 	}
 	if cfg.AppVersion == "" {
-		if cfg.Module != nil && cfg.Module.Tag != "" {
-			cfg.AppVersion = cfg.Module.Tag
-		} else {
-			cfg.AppVersion = buildconfig.Version()
-		}
+		cfg.AppVersion = buildconfig.Version()
 	}
 
 	if err := errors.Join(p.errs...); err != nil {

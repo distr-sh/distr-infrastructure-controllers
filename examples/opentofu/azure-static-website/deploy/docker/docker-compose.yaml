@@ -2,7 +2,7 @@ name: azure-static-website
 
 services:
   opentofu-controller:
-    image: ghcr.io/distr-sh/distr-controller-contrib/opentofu-controller:0.1.0 # x-release-please-version
+    image: ghcr.io/distr-sh/distr-infrastructure-controllers/opentofu-controller/examples/azure-static-website:0.1.0 # x-release-please-version
     restart: unless-stopped
     # Lets an apply in progress finish and save the state when the environment changes, while staying below
     # the 10 minutes the Distr Docker controller waits for "docker compose up".
@@ -14,11 +14,11 @@ services:
         required: false
     environment:
       INSTANCE_NAME: ${INSTANCE_NAME:?error}
-      MODULE_SOURCE: ${MODULE_SOURCE:-oci://ghcr.io/distr-sh/distr-controller-contrib/opentofu-controller/modules/azure-static-website?tag=0.1.0} # x-release-please-version
       DATA_DIR: /data
     volumes:
-      # The Distr Docker controller removes this volume when the deployment is undeployed: destroy the
-      # infrastructure with DESTROY_CONFIRM first, or it is left without a state.
+      # The state, the OpenTofu configuration and the providers. The Distr Docker controller removes this volume
+      # when the deployment is undeployed: destroy the infrastructure with DESTROY_CONFIRM first, or it is left
+      # without a state.
       - data:/data
     healthcheck:
       test: ["CMD", "/usr/local/bin/opentofu-controller", "healthcheck"]

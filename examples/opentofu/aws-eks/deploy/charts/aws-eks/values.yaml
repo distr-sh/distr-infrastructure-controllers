@@ -1,19 +1,17 @@
+# The OpenTofu controller with the OpenTofu configuration of this example.
 image:
-  repository: ghcr.io/distr-sh/distr-controller-contrib/opentofu-controller
+  repository: ghcr.io/distr-sh/distr-infrastructure-controllers/opentofu-controller/examples/aws-eks
   # Defaults to the appVersion of the chart.
   tag: ""
   pullPolicy: IfNotPresent
 
-module:
-  repository: ghcr.io/distr-sh/distr-controller-contrib/opentofu-controller/modules/aws-eks
-  # Defaults to the appVersion of the chart.
-  tag: ""
 # Installs the providers from OCI repositories below this prefix instead of registry.opentofu.org, such as
 # registry.example.com/acme/opentofu-providers. REGISTRY_USERNAME and REGISTRY_PASSWORD in secretEnv
-# authenticate at the registries of the module and the providers.
+# authenticate at its registry.
 providerMirror: ""
 
-# Name of this installation, required. Lowercase letters, digits and hyphens, 3 to 40 characters.
+# Name of this installation, required. Lowercase letters, digits and hyphens, 3 to 40 characters, starting
+# with a letter.
 instanceName: ""
 # auto applies every plan, plan only logs the changes for a review. Creating a cluster is worth a review.
 applyMode: plan
@@ -28,6 +26,8 @@ stateEncryptionPassphrase: ""
 # Variables of the OpenTofu configuration, passed as TF_VAR_<name>.
 variables:
   region: eu-central-1
+  # Networks that reach the Kubernetes API, required.
+  endpoint_public_access_cidrs: []
 
 # Additional environment variables, and those that belong into a Secret. Without credentials here, the
 # controller uses EKS Pod Identity or IRSA of its service account.

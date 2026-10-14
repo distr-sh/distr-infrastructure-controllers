@@ -6,28 +6,16 @@ import (
 	"encoding/hex"
 	"fmt"
 	"maps"
-	"os"
 	"slices"
 	"strings"
 	"time"
 
-	"github.com/distr-sh/distr-controller-contrib/internal/config"
-	"github.com/distr-sh/distr-controller-contrib/internal/status"
-	"github.com/distr-sh/distr-controller-contrib/internal/store"
-	"github.com/distr-sh/distr-controller-contrib/internal/tofu"
+	"github.com/distr-sh/distr-infrastructure-controllers/internal/config"
+	"github.com/distr-sh/distr-infrastructure-controllers/internal/status"
+	"github.com/distr-sh/distr-infrastructure-controllers/internal/store"
+	"github.com/distr-sh/distr-infrastructure-controllers/internal/tofu"
 	"go.uber.org/zap"
 )
-
-// Module is the OpenTofu configuration of MODULE_SOURCE in an OCI registry.
-type Module interface {
-	// Resolve returns the digest of the module package that the source refers to now.
-	Resolve(ctx context.Context) (string, error)
-	// Fetch extracts the package with the digest into dir and returns the directory of the root module.
-	Fetch(ctx context.Context, digest, dir string) (string, error)
-	// RootDir returns the directory of the root module in a package extracted into dir.
-	RootDir(dir string) string
-	String() string
-}
 
 type Reconciler struct {
 	cfg     *config.Config
@@ -35,9 +23,8 @@ type Reconciler struct {
 	store   *store.Store
 	tracker *status.Tracker
 	logger  *zap.Logger
-	// module is nil when the configuration is already in the working directory.
-	module Module
-	// moduleDigest identifies the module package in the data directory that the runs use.
+	// moduleDigest identifies the OpenTofu configuration of the image, so that a plan with changes can tell a
+	// new configuration apart from changes someone made to the infrastructure by hand.
 	moduleDigest string
 	// configHash identifies the input variables, so that a plan with changes can tell a changed
 	// configuration apart from changes someone made to the infrastructure by hand.
@@ -48,20 +35,20 @@ type Reconciler struct {
 func New(
 	cfg *config.Config,
 	runner *tofu.Runner,
-	module Module,
+	moduleDigest string,
 	store *store.Store,
 	tracker *status.Tracker,
 	logger *zap.Logger,
 	environ []string,
 ) *Reconciler {
 	return &Reconciler{
-		cfg:        cfg,
-		tofu:       runner,
-		module:     module,
-		store:      store,
-		tracker:    tracker,
-		logger:     logger,
-		configHash: hashVariables(environ),
+		cfg:          cfg,
+		tofu:         runner,
+		moduleDigest: moduleDigest,
+		store:        store,
+		tracker:      tracker,
+		logger:       logger,
+		configHash:   hashVariables(environ),
 	}
 }
 
@@ -154,10 +141,6 @@ func (r *Reconciler) reconcile(
 				"unset it to keep reconciling", r.cfg.DestroyConfirm, r.cfg.InstanceName)
 	}
 
-	if err := r.prepareModule(ctx); err != nil {
-		return status.ResultFailed, nil, err
-	}
-
 	r.logger.Info("initializing the working directory")
 	if err := r.tofu.Init(ctx, r.store.StatePath()); err != nil {
 		return status.ResultFailed, nil, err
@@ -230,77 +213,6 @@ func (r *Reconciler) showPlan(ctx context.Context, planFile string) {
 	}
 }
 
-// prepareModule downloads the module package into the data directory when the source refers to a package
-// other than the one there. When the registry cannot be reached, the runs go on with the package they
-// already have, also after a restart.
-func (r *Reconciler) prepareModule(ctx context.Context) error {
-	if r.module == nil {
-		return nil
-	}
-	if r.moduleDigest == "" {
-		r.restoreModule()
-	}
-	digest, err := r.module.Resolve(ctx)
-	if err != nil {
-		if r.moduleDigest == "" {
-			return fmt.Errorf("could not resolve the module %s: %w", r.module, err)
-		}
-		r.logger.Warn(fmt.Sprintf("could not check the module %s for changes, using %s", r.module, r.moduleDigest),
-			zap.Error(err))
-		return nil
-	}
-	if digest == r.moduleDigest {
-		return nil
-	}
-
-	r.logger.Info(fmt.Sprintf("downloading the module %s (%s)", r.module, digest))
-	dir := r.store.ModuleDir(digest)
-	partial := dir + ".partial"
-	if err := os.RemoveAll(partial); err != nil {
-		return fmt.Errorf("could not remove an incomplete download of the module: %w", err)
-	}
-	if _, err := r.module.Fetch(ctx, digest, partial); err != nil {
-		_ = os.RemoveAll(partial)
-		return fmt.Errorf("could not download the module %s: %w", r.module, err)
-	}
-	if err := os.RemoveAll(dir); err != nil {
-		return fmt.Errorf("could not remove a previous download of the module: %w", err)
-	}
-	if err := os.Rename(partial, dir); err != nil {
-		return fmt.Errorf("could not move the downloaded module into place: %w", err)
-	}
-	r.tofu.Dir = r.module.RootDir(dir)
-	r.moduleDigest = digest
-	if err := r.store.WriteModule(store.Module{Source: r.module.String(), Digest: digest}); err != nil {
-		r.logger.Warn("could not record the downloaded module, after a restart the controller needs the "+
-			"registry to download it again", zap.Error(err))
-	}
-	if err := r.store.RemoveModulesExcept(digest); err != nil {
-		r.logger.Warn("could not remove the previous module", zap.Error(err))
-	}
-	return nil
-}
-
-// restoreModule picks up the module package that the controller downloaded before it was restarted, as long
-// as it belongs to the same source.
-func (r *Reconciler) restoreModule() {
-	m, err := r.store.ReadModule()
-	if err != nil {
-		r.logger.Warn("could not read which module the data directory holds, downloading it again", zap.Error(err))
-		return
-	}
-	if m.Digest == "" || m.Source != r.module.String() {
-		return
-	}
-	rootDir := r.module.RootDir(r.store.ModuleDir(m.Digest))
-	if info, err := os.Stat(rootDir); err != nil || !info.IsDir() {
-		return
-	}
-	r.logger.Debug(fmt.Sprintf("found the module %s (%s) in the data directory", r.module, m.Digest))
-	r.tofu.Dir = rootDir
-	r.moduleDigest = m.Digest
-}
-
 func (r *Reconciler) explainChanges(persisted store.Persisted) {
 	switch {
 	case persisted.LastAppliedVersion == "" && !r.store.StateExists():
@@ -311,8 +223,8 @@ func (r *Reconciler) explainChanges(persisted store.Persisted) {
 		r.logger.Info(fmt.Sprintf("upgrading the infrastructure from version %s to %s",
 			persisted.LastAppliedVersion, r.cfg.AppVersion))
 	case persisted.LastAppliedModule != r.moduleDigest:
-		r.logger.Info(fmt.Sprintf("the module changed since the last apply, from %s to %s",
-			persisted.LastAppliedModule, r.moduleDigest))
+		r.logger.Info("the OpenTofu configuration in the image changed since the last apply",
+			zap.String("from", persisted.LastAppliedModule), zap.String("to", r.moduleDigest))
 	case persisted.LastAppliedConfig != r.configHash:
 		r.logger.Info("the configuration changed since the last apply")
 	default:

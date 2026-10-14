@@ -3,7 +3,7 @@ package logging
 import (
 	"os"
 
-	"github.com/distr-sh/distr-controller-contrib/internal/config"
+	"github.com/distr-sh/distr-infrastructure-controllers/internal/config"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 )

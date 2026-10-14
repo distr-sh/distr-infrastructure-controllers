@@ -1,12 +1,15 @@
 # An EKS cluster with a PostgreSQL database and a bucket for the application. The application's service
-# account gets access to the bucket through EKS Pod Identity.
+# account gets access to the bucket through EKS Pod Identity. The nodes and the database run in a single
+# availability zone, which is cheaper but not highly available.
 
 locals {
   tags = {
     "distr.sh/instance"   = var.instance_name
     "distr.sh/managed-by" = "distr-opentofu-controller"
   }
-  azs = slice(data.aws_availability_zones.available.names, 0, 3)
+  # EKS and the RDS subnet group require subnets in two zones, the nodes and the database run in the first.
+  azs  = slice(data.aws_availability_zones.available.names, 0, 2)
+  zone = local.azs[0]
 }
 
 data "aws_availability_zones" "available" {
@@ -57,6 +60,7 @@ module "eks" {
 
   eks_managed_node_groups = {
     default = {
+      subnet_ids     = [module.vpc.private_subnets[0]]
       instance_types = var.node_instance_types
       min_size       = var.node_count
       max_size       = var.node_count
@@ -100,6 +104,7 @@ resource "aws_db_instance" "database" {
 
   db_subnet_group_name   = module.vpc.database_subnet_group_name
   vpc_security_group_ids = [aws_security_group.database.id]
+  availability_zone      = local.zone
 
   backup_retention_period   = 7
   deletion_protection       = var.database_deletion_protection

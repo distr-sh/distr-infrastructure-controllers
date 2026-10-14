@@ -6,37 +6,30 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"strings"
 
-	"github.com/distr-sh/distr-controller-contrib/internal/status"
+	"github.com/distr-sh/distr-infrastructure-controllers/internal/status"
 )
 
 const (
-	stateFileName         = "terraform.tfstate"
-	statusFileName        = "status.json"
-	plansDirName          = "plans"
-	pluginsDirName        = "plugins"
-	modulesDirName        = "modules"
-	currentModuleFileName = "current.json"
+	stateFileName  = "terraform.tfstate"
+	statusFileName = "status.json"
+	plansDirName   = "plans"
+	pluginsDirName = "plugins"
+	moduleDirName  = "module"
 )
 
 // Store is the data directory: the OpenTofu state, the plan in progress, the status of the last run, the
-// module package and the provider plugin cache. It is the only thing that has to survive a restart, so it
-// lives on a volume.
+// OpenTofu configuration and the provider plugin cache. It lives on a volume, so that the state and the
+// providers survive a restart.
 type Store struct {
 	dir string
 }
 
-// Module identifies the module package in the data directory.
-type Module struct {
-	Source string `json:"source"`
-	Digest string `json:"digest"`
-}
-
 type Persisted struct {
 	LastRun *status.Run `json:"lastRun,omitempty"`
-	// LastAppliedVersion and LastAppliedConfig describe the last successful apply. A plan with changes for
-	// the same version and configuration means that someone changed the infrastructure by hand.
+	// LastAppliedVersion, LastAppliedModule and LastAppliedConfig describe the last successful apply. A plan
+	// with changes for the same version, OpenTofu configuration and variables means that someone changed the
+	// infrastructure by hand.
 	LastAppliedVersion string `json:"lastAppliedVersion,omitempty"`
 	LastAppliedModule  string `json:"lastAppliedModule,omitempty"`
 	LastAppliedConfig  string `json:"lastAppliedConfig,omitempty"`
@@ -47,9 +40,7 @@ func Open(dir string) (*Store, error) {
 	if err != nil {
 		return nil, err
 	}
-	for _, d := range []string{
-		abs, filepath.Join(abs, plansDirName), filepath.Join(abs, pluginsDirName), filepath.Join(abs, modulesDirName),
-	} {
+	for _, d := range []string{abs, filepath.Join(abs, plansDirName), filepath.Join(abs, pluginsDirName)} {
 		if err := os.MkdirAll(d, 0o700); err != nil {
 			return nil, fmt.Errorf("could not create data directory: %w", err)
 		}
@@ -75,49 +66,9 @@ func (s *Store) PluginCacheDir() string {
 	return filepath.Join(s.dir, pluginsDirName)
 }
 
-// ModuleDir is the directory of the module package with the digest, which keeps the package across restarts,
-// so that a run does not need the registry once the controller has the package.
-func (s *Store) ModuleDir(digest string) string {
-	return filepath.Join(s.dir, modulesDirName, strings.ReplaceAll(digest, ":", "-"))
-}
-
-// ReadModule returns the module package that WriteModule recorded last, or the zero Module.
-func (s *Store) ReadModule() (Module, error) {
-	var m Module
-	data, err := os.ReadFile(filepath.Join(s.dir, modulesDirName, currentModuleFileName))
-	if errors.Is(err, os.ErrNotExist) {
-		return m, nil
-	} else if err != nil {
-		return m, err
-	}
-	err = json.Unmarshal(data, &m)
-	return m, err
-}
-
-func (s *Store) WriteModule(m Module) error {
-	data, err := json.MarshalIndent(m, "", "  ")
-	if err != nil {
-		return err
-	}
-	return writeAtomic(filepath.Join(s.dir, modulesDirName, currentModuleFileName), data)
-}
-
-// RemoveModulesExcept removes every module package but the one with the digest.
-func (s *Store) RemoveModulesExcept(digest string) error {
-	dir := filepath.Join(s.dir, modulesDirName)
-	entries, err := os.ReadDir(dir)
-	if err != nil {
-		return err
-	}
-	keep := filepath.Base(s.ModuleDir(digest))
-	var errs []error
-	for _, e := range entries {
-		if e.Name() == keep || e.Name() == currentModuleFileName {
-			continue
-		}
-		errs = append(errs, os.RemoveAll(filepath.Join(dir, e.Name())))
-	}
-	return errors.Join(errs...)
+// ModuleDir receives a copy of the OpenTofu configuration of the image on every start, and OpenTofu runs in it.
+func (s *Store) ModuleDir() string {
+	return filepath.Join(s.dir, moduleDirName)
 }
 
 func (s *Store) StateExists() bool {

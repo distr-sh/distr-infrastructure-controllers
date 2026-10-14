@@ -48,8 +48,6 @@ spec:
           env:
             - name: INSTANCE_NAME
               value: {{ include "byoc.instanceName" . | quote }}
-            - name: MODULE_SOURCE
-              value: {{ printf "oci://%s?tag=%s" .Values.module.repository (.Values.module.tag | default .Chart.AppVersion) | quote }}
             {{- with .Values.providerMirror }}
             - name: PROVIDER_MIRROR
               value: {{ . | quote }}

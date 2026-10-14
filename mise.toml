@@ -21,8 +21,8 @@ CGO_ENABLED = "0"
 EXAMPLE = "{{ get_env(name='EXAMPLE', default='hello-world') }}"
 
 [vars]
-ldflags = "-s -w -X github.com/distr-sh/distr-controller-contrib/internal/buildconfig.version=$VERSION -X github.com/distr-sh/distr-controller-contrib/internal/buildconfig.commit=$COMMIT"
-image = "ghcr.io/distr-sh/distr-controller-contrib/opentofu-controller"
+ldflags = "-s -w -X github.com/distr-sh/distr-infrastructure-controllers/internal/buildconfig.version=$VERSION -X github.com/distr-sh/distr-infrastructure-controllers/internal/buildconfig.commit=$COMMIT"
+image = "ghcr.io/distr-sh/distr-infrastructure-controllers/opentofu-controller"
 
 [tasks.go-tidy]
 run = "go mod tidy"
@@ -36,10 +36,11 @@ description = "Build the OpenTofu controller into dist/"
 run = 'go run -ldflags="{{vars.ldflags}}" ./cmd/controller/opentofu run'
 depends = ["go-tidy"]
 description = """
-Run the OpenTofu controller against the configuration of an example in examples/opentofu/, without a module package:
-"EXAMPLE=hello-world mise run opentofu:run". State, plans, status and providers end up in .data/<example>.
+Run the OpenTofu controller against the configuration of an example in examples/opentofu/, without an image:
+"EXAMPLE=hello-world mise run opentofu:run". The configuration, state, plans, status and providers end up in
+.data/<example>.
 """
-env = { INSTANCE_NAME = "local-dev", RECONCILE_INTERVAL = "1m", DATA_DIR = ".data/{{env.EXAMPLE}}", WORKING_DIR = "examples/opentofu/{{env.EXAMPLE}}" }
+env = { INSTANCE_NAME = "local-dev", RECONCILE_INTERVAL = "1m", DATA_DIR = ".data/{{env.EXAMPLE}}", MODULE_DIR = "examples/opentofu/{{env.EXAMPLE}}" }
 
 [tasks."lint:go"]
 run = "golangci-lint run"
@@ -93,14 +94,10 @@ description = "Update the dependency lock files of all examples for every platfo
 run = "docker build --tag {{vars.image}}:$VERSION --build-arg VERSION=$VERSION --build-arg COMMIT=$COMMIT ."
 description = "Build the image of the OpenTofu controller"
 
-[tasks."opentofu:package:module"]
-run = "hack/package-module.sh examples/opentofu/$EXAMPLE dist/modules/$EXAMPLE.zip"
-description = 'Package an example as an OpenTofu module package: "EXAMPLE=aws-eks mise run opentofu:package:module"'
-
-[tasks."opentofu:push:module"]
-run = "cd dist/modules && oras push --artifact-type application/vnd.opentofu.modulepkg {{vars.image}}/modules/$EXAMPLE:$VERSION $EXAMPLE.zip:archive/zip"
-depends = ["opentofu:package:module"]
-description = 'Push the module package of an example, after "oras login"'
+[tasks."opentofu:docker-build:example"]
+run = "docker build --tag {{vars.image}}/examples/$EXAMPLE:$VERSION --build-arg CONTROLLER_IMAGE={{vars.image}}:$VERSION --build-arg VERSION=$VERSION examples/opentofu/$EXAMPLE"
+depends = ["opentofu:docker-build"]
+description = 'Build the image of an example on top of the image of the OpenTofu controller: "EXAMPLE=aws-eks mise run opentofu:docker-build:example"'
 
 [tasks."opentofu:push:providers"]
 run = "hack/push-providers.sh examples/opentofu/$EXAMPLE $PROVIDER_MIRROR"

@@ -8,6 +8,8 @@
       "bump-minor-pre-major": true,
       "bump-patch-for-minor-pre-major": false,
       "extra-files": [
+        "README.md",
+        "examples/opentofu/aws-eks/Dockerfile",
         "examples/opentofu/aws-eks/deploy/docker/docker-compose.yaml",
         {
           "type": "yaml",
@@ -19,6 +21,7 @@
           "path": "examples/opentofu/aws-eks/deploy/charts/aws-eks/Chart.yaml",
           "jsonpath": "$.appVersion"
         },
+        "examples/opentofu/azure-static-website/Dockerfile",
         "examples/opentofu/azure-static-website/deploy/docker/docker-compose.yaml",
         {
           "type": "yaml",
@@ -30,6 +33,7 @@
           "path": "examples/opentofu/azure-static-website/deploy/charts/azure-static-website/Chart.yaml",
           "jsonpath": "$.appVersion"
         },
+        "examples/opentofu/hello-world/Dockerfile",
         "examples/opentofu/hello-world/deploy/docker/docker-compose.yaml",
         {
           "type": "yaml",

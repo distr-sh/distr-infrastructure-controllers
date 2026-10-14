@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net"
 	"net/http"
 	"os"
 	"os/signal"
@@ -12,18 +13,17 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/distr-sh/distr-controller-contrib/internal/buildconfig"
-	"github.com/distr-sh/distr-controller-contrib/internal/config"
-	"github.com/distr-sh/distr-controller-contrib/internal/health"
-	"github.com/distr-sh/distr-controller-contrib/internal/logging"
-	"github.com/distr-sh/distr-controller-contrib/internal/module"
-	"github.com/distr-sh/distr-controller-contrib/internal/reconcile"
-	"github.com/distr-sh/distr-controller-contrib/internal/status"
-	"github.com/distr-sh/distr-controller-contrib/internal/store"
-	"github.com/distr-sh/distr-controller-contrib/internal/tofu"
+	"github.com/distr-sh/distr-infrastructure-controllers/internal/buildconfig"
+	"github.com/distr-sh/distr-infrastructure-controllers/internal/config"
+	"github.com/distr-sh/distr-infrastructure-controllers/internal/health"
+	"github.com/distr-sh/distr-infrastructure-controllers/internal/logging"
+	"github.com/distr-sh/distr-infrastructure-controllers/internal/module"
+	"github.com/distr-sh/distr-infrastructure-controllers/internal/reconcile"
+	"github.com/distr-sh/distr-infrastructure-controllers/internal/status"
+	"github.com/distr-sh/distr-infrastructure-controllers/internal/store"
+	"github.com/distr-sh/distr-infrastructure-controllers/internal/tofu"
 	"github.com/spf13/cobra"
 	"go.uber.org/zap"
-	"oras.land/oras-go/v2/registry/remote/auth"
 )
 
 func main() {
@@ -97,19 +97,16 @@ func run(ctx context.Context, cfg *config.Config, logger *zap.Logger) error {
 	}
 	env = append(env, cliConfigEnv...)
 
-	var mod reconcile.Module
-	if cfg.Module != nil {
-		fetcher, err := module.NewFetcher(*cfg.Module,
-			auth.Credential{Username: cfg.RegistryUsername, Password: cfg.RegistryPassword})
-		if err != nil {
-			return err
-		}
-		mod = fetcher
+	moduleDigest, err := module.Install(cfg.ModuleDir, dataStore.ModuleDir())
+	if err != nil {
+		return fmt.Errorf("could not copy the OpenTofu configuration from MODULE_DIR into the data directory, the "+
+			"image has to be built FROM the OpenTofu controller image and copy the configuration to %s: %w",
+			cfg.ModuleDir, err)
 	}
 
 	runner := &tofu.Runner{
 		Binary:           cfg.TofuBinary,
-		Dir:              cfg.WorkingDir,
+		Dir:              dataStore.ModuleDir(),
 		Env:              env,
 		PluginCacheDir:   pluginCacheDir,
 		Logger:           logger,
@@ -128,37 +125,46 @@ func run(ctx context.Context, cfg *config.Config, logger *zap.Logger) error {
 		zap.String("instance", cfg.InstanceName),
 		zap.String("mode", string(cfg.ApplyMode)),
 		zap.Duration("interval", cfg.ReconcileInterval),
-		zap.String("workingDir", cfg.WorkingDir),
+		zap.String("moduleDir", cfg.ModuleDir),
+		zap.String("module", moduleDigest),
 		zap.String("dataDir", dataStore.Dir()),
-	}
-	if mod != nil {
-		fields = append(fields, zap.Stringer("module", mod))
 	}
 	if cfg.ProviderMirror != "" {
 		fields = append(fields, zap.String("providerMirror", cfg.ProviderMirror))
 	}
 	logger.Info("starting the OpenTofu controller", fields...)
 
+	listener, err := net.Listen("tcp", cfg.HealthAddr)
+	if err != nil {
+		return fmt.Errorf("could not listen on HEALTH_ADDR %s for the health checks: %w", cfg.HealthAddr, err)
+	}
 	tracker := &status.Tracker{}
 	server := &http.Server{
-		Addr:              cfg.HealthAddr,
 		Handler:           health.Handler(tracker),
 		ReadHeaderTimeout: 5 * time.Second,
 	}
+	// Without the health checks the runtime cannot tell that the controller works, so the controller stops
+	// with them and lets the runtime restart it.
+	ctx, cancel := context.WithCancelCause(ctx)
+	defer cancel(nil)
 	go func() {
-		if err := server.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
-			logger.Error("health server stopped", zap.Error(err))
+		if err := server.Serve(listener); err != nil && !errors.Is(err, http.ErrServerClosed) {
+			logger.Error("the health checks stopped answering, stopping the controller", zap.Error(err))
+			cancel(fmt.Errorf("the health checks stopped answering: %w", err))
 		}
 	}()
 	defer func() {
-		shutdownCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
-		defer cancel()
+		shutdownCtx, cancelShutdown := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
+		defer cancelShutdown()
 		_ = server.Shutdown(shutdownCtx)
 	}()
 
-	reconciler := reconcile.New(cfg, runner, mod, dataStore, tracker, logger, append(os.Environ(), env...))
+	reconciler := reconcile.New(cfg, runner, moduleDigest, dataStore, tracker, logger, append(os.Environ(), env...))
 	err = reconciler.Run(ctx)
 	logger.Info("the OpenTofu controller stopped")
+	if cause := context.Cause(ctx); err == nil && cause != nil && !errors.Is(cause, context.Canceled) {
+		return cause
+	}
 	return err
 }
 
@@ -166,9 +172,6 @@ func run(ctx context.Context, cfg *config.Config, logger *zap.Logger) error {
 // returns the environment that points OpenTofu at it. A CLI configuration of the user's own takes precedence.
 func cliConfig(cfg *config.Config, logger *zap.Logger) ([]string, error) {
 	var hosts []string
-	if cfg.Module != nil {
-		hosts = append(hosts, cfg.Module.Host())
-	}
 	if cfg.ProviderMirror != "" {
 		host, _, _ := strings.Cut(cfg.ProviderMirror, "/")
 		hosts = append(hosts, host)

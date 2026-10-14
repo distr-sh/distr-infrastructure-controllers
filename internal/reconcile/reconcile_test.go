@@ -2,16 +2,15 @@ package reconcile
 
 import (
 	"context"
-	"errors"
 	"os"
 	"path/filepath"
 	"testing"
 	"time"
 
-	"github.com/distr-sh/distr-controller-contrib/internal/config"
-	"github.com/distr-sh/distr-controller-contrib/internal/status"
-	"github.com/distr-sh/distr-controller-contrib/internal/store"
-	"github.com/distr-sh/distr-controller-contrib/internal/tofu"
+	"github.com/distr-sh/distr-infrastructure-controllers/internal/config"
+	"github.com/distr-sh/distr-infrastructure-controllers/internal/status"
+	"github.com/distr-sh/distr-infrastructure-controllers/internal/store"
+	"github.com/distr-sh/distr-infrastructure-controllers/internal/tofu"
 	. "github.com/onsi/gomega"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
@@ -36,11 +35,6 @@ type fixture struct {
 
 func newFixture(t *testing.T, cfg config.Config, fakeEnv ...string) *fixture {
 	t.Helper()
-	return newFixtureWithModule(t, cfg, nil, fakeEnv...)
-}
-
-func newFixtureWithModule(t *testing.T, cfg config.Config, module Module, fakeEnv ...string) *fixture {
-	t.Helper()
 	core, logs := observer.New(zapcore.DebugLevel)
 	logger := zap.New(core)
 	if cfg.InstanceName == "" {
@@ -52,30 +46,36 @@ func newFixtureWithModule(t *testing.T, cfg config.Config, module Module, fakeEn
 	if cfg.AppVersion == "" {
 		cfg.AppVersion = "1.0.0"
 	}
-	if cfg.WorkingDir == "" {
-		cfg.WorkingDir = t.TempDir()
-	}
 
 	dataStore, err := store.Open(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
 	}
+	if err := os.MkdirAll(dataStore.ModuleDir(), 0o700); err != nil {
+		t.Fatal(err)
+	}
 	runner := &tofu.Runner{
 		Binary:           os.Args[0],
-		Dir:              t.TempDir(),
+		Dir:              dataStore.ModuleDir(),
 		Env:              append([]string{"FAKE_TOFU=1"}, fakeEnv...),
 		Logger:           logger,
 		ProgressInterval: time.Second,
 	}
 	tracker := &status.Tracker{}
 	return &fixture{
-		reconciler: New(&cfg, runner, module, dataStore, tracker, logger, runner.Env),
+		reconciler: New(&cfg, runner, "sha256:aaa", dataStore, tracker, logger, runner.Env),
 		tracker:    tracker,
 		store:      dataStore,
 		logs:       logs,
 		cfg:        &cfg,
 		runner:     runner,
 	}
+}
+
+// restart replaces the reconciler like a restart of the controller with an image whose OpenTofu configuration
+// has the digest does.
+func (f *fixture) restart(moduleDigest string) {
+	f.reconciler = New(f.cfg, f.runner, moduleDigest, f.store, f.tracker, f.runner.Logger, f.runner.Env)
 }
 
 func (f *fixture) messages() []string {
@@ -215,131 +215,29 @@ func TestReconcileDestroyIgnoresPlanMode(t *testing.T) {
 	g.Expect(f.messages()).NotTo(ContainElement("changes are pending, set APPLY_MODE=auto to apply them"))
 }
 
-type fakeModule struct {
-	digest   string
-	err      error
-	fetchErr error
-	fetches  []string
-}
-
-func (m *fakeModule) Resolve(context.Context) (string, error) {
-	return m.digest, m.err
-}
-
-func (m *fakeModule) Fetch(_ context.Context, digest, dir string) (string, error) {
-	m.fetches = append(m.fetches, digest)
-	if err := os.Mkdir(dir, 0o700); err != nil {
-		return "", err
-	}
-	if err := os.WriteFile(filepath.Join(dir, "main.tf"), []byte(digest), 0o600); err != nil {
-		return "", err
-	}
-	return dir, m.fetchErr
-}
-
-func (m *fakeModule) RootDir(dir string) string {
-	return dir
-}
-
-func (m *fakeModule) String() string {
-	return "oci://registry.example.com/modules/app?tag=1.0.0"
-}
-
-func TestReconcileDownloadsTheModuleOnlyWhenItChanges(t *testing.T) {
+func TestReconcileTellsANewModuleApartFromDrift(t *testing.T) {
 	g := NewWithT(t)
-	mod := &fakeModule{digest: "sha256:aaa"}
-	f := newFixtureWithModule(t, config.Config{}, mod, "FAKE_TOFU_PLAN=changes")
+	f := newFixture(t, config.Config{}, "FAKE_TOFU_PLAN=changes")
 
 	run := f.reconciler.Reconcile(context.Background())
 	g.Expect(run.Result).To(Equal(status.ResultSucceeded))
 	g.Expect(run.ModuleDigest).To(Equal("sha256:aaa"))
-	g.Expect(f.runner.Dir).To(Equal(f.store.ModuleDir("sha256:aaa")))
-	g.Expect(filepath.Join(f.runner.Dir, ".terraform", "terraform.tfstate")).To(BeAnExistingFile())
+	g.Expect(filepath.Join(f.store.ModuleDir(), ".terraform", "terraform.tfstate")).To(BeAnExistingFile())
 
-	f.reconciler.Reconcile(context.Background())
-	g.Expect(mod.fetches).To(Equal([]string{"sha256:aaa"}))
-
-	mod.digest = "sha256:bbb"
+	f.restart("sha256:bbb")
 	run = f.reconciler.Reconcile(context.Background())
 	g.Expect(run.Result).To(Equal(status.ResultSucceeded))
-	g.Expect(mod.fetches).To(Equal([]string{"sha256:aaa", "sha256:bbb"}))
-	g.Expect(os.ReadFile(filepath.Join(f.runner.Dir, "main.tf"))).To(Equal([]byte("sha256:bbb")))
-	g.Expect(f.messages()).To(ContainElement("the module changed since the last apply, from sha256:aaa to sha256:bbb"))
+	g.Expect(run.ModuleDigest).To(Equal("sha256:bbb"))
+	g.Expect(f.messages()).To(ContainElement("the OpenTofu configuration in the image changed since the last apply"))
+	g.Expect(f.logs.FilterMessageSnippet("drift detected").Len()).To(BeZero())
 
 	persisted, err := f.store.ReadPersisted()
 	g.Expect(err).NotTo(HaveOccurred())
 	g.Expect(persisted.LastAppliedModule).To(Equal("sha256:bbb"))
-	g.Expect(f.store.ModuleDir("sha256:aaa")).NotTo(BeADirectory())
-}
 
-func TestReconcileKeepsTheModuleWhenTheDownloadFails(t *testing.T) {
-	g := NewWithT(t)
-	mod := &fakeModule{digest: "sha256:aaa"}
-	f := newFixtureWithModule(t, config.Config{}, mod)
-
-	run := f.reconciler.Reconcile(context.Background())
-	g.Expect(run.Result).To(Equal(status.ResultSucceeded))
-
-	mod.digest, mod.fetchErr = "sha256:bbb", errors.New("connection reset")
-	run = f.reconciler.Reconcile(context.Background())
-	g.Expect(run.Result).To(Equal(status.ResultFailed))
-	g.Expect(run.Error).To(ContainSubstring("could not download the module"))
-	g.Expect(run.ModuleDigest).To(Equal("sha256:aaa"))
-	g.Expect(f.runner.Dir).To(Equal(f.store.ModuleDir("sha256:aaa")))
-	g.Expect(filepath.Join(f.runner.Dir, "main.tf")).To(BeAnExistingFile())
-	g.Expect(f.store.ModuleDir("sha256:bbb") + ".partial").NotTo(BeADirectory())
-
-	mod.err = errors.New("connection refused")
-	run = f.reconciler.Reconcile(context.Background())
-	g.Expect(run.Result).To(Equal(status.ResultSucceeded))
-}
-
-func TestReconcileKeepsTheModuleAcrossRestarts(t *testing.T) {
-	g := NewWithT(t)
-	mod := &fakeModule{digest: "sha256:aaa"}
-	f := newFixtureWithModule(t, config.Config{}, mod)
-
-	run := f.reconciler.Reconcile(context.Background())
-	g.Expect(run.Result).To(Equal(status.ResultSucceeded))
-
-	restarted := func() (*Reconciler, *tofu.Runner) {
-		runner := *f.runner
-		runner.Dir = t.TempDir()
-		return New(f.cfg, &runner, mod, f.store, &status.Tracker{}, f.runner.Logger, runner.Env), &runner
-	}
-
-	mod.err = errors.New("connection refused")
-	reconciler, runner := restarted()
-	run = reconciler.Reconcile(context.Background())
-	g.Expect(run.Result).To(Equal(status.ResultSucceeded))
-	g.Expect(run.ModuleDigest).To(Equal("sha256:aaa"))
-	g.Expect(runner.Dir).To(Equal(f.store.ModuleDir("sha256:aaa")))
-
-	mod.err = nil
-	reconciler, _ = restarted()
-	run = reconciler.Reconcile(context.Background())
-	g.Expect(run.Result).To(Equal(status.ResultSucceeded))
-	g.Expect(mod.fetches).To(HaveLen(1))
-}
-
-func TestReconcileKeepsTheModuleWhenTheRegistryIsUnavailable(t *testing.T) {
-	g := NewWithT(t)
-	mod := &fakeModule{err: errors.New("connection refused")}
-	f := newFixtureWithModule(t, config.Config{}, mod)
-
-	run := f.reconciler.Reconcile(context.Background())
-	g.Expect(run.Result).To(Equal(status.ResultFailed))
-	g.Expect(run.Error).To(ContainSubstring("could not resolve the module"))
-
-	mod.digest, mod.err = "sha256:aaa", nil
-	run = f.reconciler.Reconcile(context.Background())
-	g.Expect(run.Result).To(Equal(status.ResultSucceeded))
-
-	mod.err = errors.New("connection refused")
-	run = f.reconciler.Reconcile(context.Background())
-	g.Expect(run.Result).To(Equal(status.ResultSucceeded))
-	g.Expect(f.logs.FilterMessageSnippet("could not check the module").Len()).To(Equal(1))
-	g.Expect(mod.fetches).To(HaveLen(1))
+	f.restart("sha256:bbb")
+	f.reconciler.Reconcile(context.Background())
+	g.Expect(f.logs.FilterMessageSnippet("drift detected").Len()).To(Equal(1))
 }
 
 func TestHashVariablesIgnoresOtherVariablesAndOverriddenValues(t *testing.T) {

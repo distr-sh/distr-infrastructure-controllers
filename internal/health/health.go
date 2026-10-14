@@ -8,7 +8,7 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/distr-sh/distr-controller-contrib/internal/status"
+	"github.com/distr-sh/distr-infrastructure-controllers/internal/status"
 )
 
 // Handler serves /healthz, which only tells that the process is alive, and /readyz, which fails once a
