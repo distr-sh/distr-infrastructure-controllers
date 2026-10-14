@@ -40,7 +40,7 @@ you release a new image, and Distr rolls it out like any other.
    <!-- x-release-please-start-version -->
 
    ```dockerfile
-   FROM ghcr.io/distr-sh/distr-infrastructure-controllers/opentofu-controller:0.1.0
+   FROM ghcr.io/distr-sh/distr-infrastructure-controllers/opentofu-controller:0.2.0
    ENV APP_VERSION=<version>
    COPY *.tf .terraform.lock.hcl /module/
    ```
@@ -50,9 +50,9 @@ you release a new image, and Distr rolls it out like any other.
 3. Release a version in Distr whose Compose file or chart runs that image with a volume at `/data`.
 
 The image must contain the lock file, because the controller installs exactly the providers locked in it.
-Build it with `--build-arg VERSION=1.0.0` to set the version of the infrastructure. Without it, the
-infrastructure gets the version of the OpenTofu controller. The controller also remembers a digest of the
-configuration it applied, so a changed configuration under the same version isn't mistaken for drift.
+Replace `<version>` with the version of your infrastructure. Without `APP_VERSION`, the infrastructure gets
+the version of the OpenTofu controller. The controller also remembers a digest of the configuration it
+applied, so a changed configuration under the same version isn't mistaken for drift.
 
 OpenTofu downloads the providers when a run needs them. If an installation can't reach
 `registry.opentofu.org`, push the `linux_amd64` and `linux_arm64` builds of its providers to an OCI registry,
