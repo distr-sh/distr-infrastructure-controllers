@@ -4,7 +4,8 @@
     "gomodTidy"
   ],
   "extends": [
-    "config:recommended"
+    "config:recommended",
+    "helpers:pinGitHubActionDigestsToSemver"
   ],
   "minimumReleaseAge": "1 day",
   "customManagers": [
