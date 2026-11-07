@@ -18,7 +18,7 @@ RUN CGO_ENABLED=0 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH} \
     -ldflags="-s -w -X github.com/distr-sh/distr-infrastructure-controllers/internal/buildconfig.version=${VERSION:-snapshot} -X github.com/distr-sh/distr-infrastructure-controllers/internal/buildconfig.commit=${COMMIT}" \
     ./cmd/controller/opentofu/
 
-FROM ghcr.io/opentofu/opentofu:1.13.1-minimal AS tofu
+FROM ghcr.io/opentofu/opentofu:1.13.9-minimal AS tofu
 
 FROM alpine:3.24
 RUN apk add --no-cache ca-certificates tini \
