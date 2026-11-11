@@ -3,7 +3,7 @@ env_shell_expand = false
 task.output = "prefix"
 
 [tools]
-go = "1.27.1"
+go = "1.27.4"
 golangci-lint = "2.14.0"
 opentofu = "1.13.1"
 tflint = "0.64.0"
