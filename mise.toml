@@ -7,7 +7,7 @@ go = "1.27.1"
 golangci-lint = "2.14.0"
 opentofu = "1.13.1"
 tflint = "0.64.0"
-helm = "4.3.0"
+helm = "4.3.2"
 dprint = "0.61.1"
 
 [env]
